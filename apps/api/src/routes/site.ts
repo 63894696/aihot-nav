@@ -102,7 +102,7 @@ export function registerSite(app: FastifyInstance) {
   }));
 
   // Daily fresh-tools window: top N tool_release items from the last sinceHours, score ≥ minScore.
-  // Used by the homepage ("/daily") — the navigation layer's first-paint card list.
+  // Used by the homepage ("/new") — the navigation layer's first-paint card list.
   app.get("/api/site/daily", siteHandler(async (req, reply) => {
     const q = looseQuery(req);
     const sinceHours = Number(q.since) || 24;

@@ -131,6 +131,14 @@ export interface PoolResponse {
   generatedAt: string;
 }
 
+/** Top tool_release items in the last sinceHours, the homepage ("/new") payload. */
+export interface DailyResponse {
+  items: FeedItemSummary[];
+  /** Earliest upcoming visible_after inside the daily window — caches expire then. */
+  refreshAt: string | null;
+  generatedAt: string;
+}
+
 export interface OutlineEntry {
   id: string;
   text: string;
