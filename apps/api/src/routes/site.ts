@@ -8,6 +8,7 @@ import { exportMarkdown, loadItemDetail, siteItemDetail } from "@aihot/backend/p
 import { loadPool, SearchBusyError } from "@aihot/backend/publication/pool";
 import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
+import { loadTools } from "@aihot/backend/publication/tools";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
@@ -111,6 +112,25 @@ export function registerSite(app: FastifyInstance) {
     const data = await loadDaily({ sinceHours, minScore, limit });
     const cc = cacheUntil(reply, 60, data.refreshAt);
     return sendJsonWithEtag(req, reply, data, { etagPrefix: "daily", cacheControl: cc, etagOf: data.items });
+  }));
+
+  // Tools catalog: tool_release items over a longer window with category/tag/channel filters and
+  // cursor pagination. Used by /tools — the navigation layer's main grid (complement to /new).
+  app.get("/api/site/tools", siteHandler(async (req, reply) => {
+    const q = looseQuery(req);
+    const channel = q.channel ?? "all";
+    if (!isChannelKey(channel)) return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid channel" });
+    const category = q.category ?? null;
+    if (category !== null && !isCategoryKey(category)) return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid category" });
+    const tag = q.tag?.trim() ? q.tag.trim().slice(0, 60) : null;
+    const sort: "recent" | "score" = q.sort === "score" ? "score" : "recent";
+    const windowDays = Number(q.windowDays) || 30;
+    const limit = Number(q.limit) || 24;
+    const cursor = q.cursor || null;
+    const data = await loadTools({ channel, category: category as CategoryKey | null, tag, sort, windowDays, limit, cursor });
+    const cc = cacheUntil(reply, 60, data.refreshAt);
+    const { generatedAt: _, ...content } = data;
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "tools", cacheControl: cc, etagOf: content });
   }));
 
   app.get("/api/site/pool", siteHandler(async (req, reply) => {

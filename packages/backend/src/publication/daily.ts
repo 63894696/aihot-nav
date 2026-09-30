@@ -20,8 +20,13 @@ export interface DailyResponse {
   generatedAt: string;
 }
 
-/** The "新工具" tag is the model-side indicator for itemType "tool_release" (see industry/taxonomy.ts). */
-const NEW_TOOL_TAG = "新工具";
+/**
+ * Tags that mark an item as a "new tool / model / platform" — the "AI 圈新工具" set
+ * surfaced on /new and reused by /tools. Legacy items carry the deprecated "新工具" tag
+ * (pre-prompt-whitelist); current model output puts one of {产品更新, 模型发布, 平台} as
+ * the first CATEGORY_TAG. We match either so the homepage keeps working across the cutover.
+ */
+const NEW_TOOL_TAGS = ["新工具", "产品更新", "模型发布", "平台"];
 
 export async function loadDaily(q: DailyQuery = {}): Promise<DailyResponse> {
   const now = q.now ?? new Date();
@@ -35,7 +40,7 @@ export async function loadDaily(q: DailyQuery = {}): Promise<DailyResponse> {
     WHERE ${selectedCondition(now)}
       AND p.discovered_at >= ${cutoff}
       AND p.score >= ${minScore}
-      AND p.tags @> ${[NEW_TOOL_TAG]}::text[]
+      AND p.tags && ${NEW_TOOL_TAGS}::text[]
     ORDER BY p.score DESC NULLS LAST, p.sort_at DESC, p.discovered_at DESC
     LIMIT ${limit}`;
 
@@ -54,6 +59,6 @@ async function nextDailyRelease(cutoff: Date, minScore: number, now: Date): Prom
     SELECT min(p.visible_after) AS t FROM publications p
     WHERE p.visibility = 'public' AND p.selected AND p.visible_after > ${now}
       AND p.discovered_at >= ${cutoff} AND p.score >= ${minScore}
-      AND p.tags @> ${[NEW_TOOL_TAG]}::text[]`;
+      AND p.tags && ${NEW_TOOL_TAGS}::text[]`;
   return row?.t ? row.t.toISOString() : null;
 }

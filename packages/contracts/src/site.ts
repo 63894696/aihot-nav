@@ -139,6 +139,35 @@ export interface DailyResponse {
   generatedAt: string;
 }
 
+/** Sort orders for the /tools grid. "recent" = newest by sort_at, "score" = highest score first. */
+export type ToolsSort = "recent" | "score";
+
+/**
+ * /tools payload: the navigation layer's tool catalog. One card per publication in the
+ * tool_release set (any item tagged 产品更新 / 模型发布 / 平台 / legacy 新工具). Each row IS a
+ * distinct tool announcement (no entity dedup yet) — clicking a card opens the existing /items/:id
+ * detail page, where the worker has already scored and translated the source. Future W3+ may add a
+ * tools/tools_versions schema for canonical entities; the public shape here stays the same.
+ */
+export interface ToolsFilters {
+  category: CategoryKey | null;
+  tag: string | null;
+  /** "all" keeps the default news-only set; "x" and "firstParty" mirror the timeline channels. */
+  channel: ChannelKey;
+  sort: ToolsSort;
+}
+
+export interface ToolsResponse {
+  filters: ToolsFilters;
+  items: FeedItemSummary[];
+  nextCursor: string | null;
+  /** Absolute time when the next pending release becomes visible inside this scope. */
+  refreshAt: string | null;
+  /** Earliest discovered_at in the result window — the UI uses it to show "last N days". */
+  windowDays: number;
+  generatedAt: string;
+}
+
 export interface OutlineEntry {
   id: string;
   text: string;
