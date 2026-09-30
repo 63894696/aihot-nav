@@ -7,6 +7,7 @@ import { InvalidCursorError } from "@aihot/backend/lib/cursor";
 import { exportMarkdown, loadItemDetail, siteItemDetail } from "@aihot/backend/publication/detail";
 import { loadPool, SearchBusyError } from "@aihot/backend/publication/pool";
 import { loadTimeline } from "@aihot/backend/publication/timeline";
+import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
@@ -98,6 +99,18 @@ export function registerSite(app: FastifyInstance) {
     const body = { ...data, hot, generatedAt: new Date().toISOString() };
     const cc = cacheUntil(reply, 60, data.refreshAt);
     return sendJsonWithEtag(req, reply, body, { etagPrefix: "tl", cacheControl: cc, etagOf: { ...data, hot } });
+  }));
+
+  // Daily fresh-tools window: top N tool_release items from the last sinceHours, score ≥ minScore.
+  // Used by the homepage ("/daily") — the navigation layer's first-paint card list.
+  app.get("/api/site/daily", siteHandler(async (req, reply) => {
+    const q = looseQuery(req);
+    const sinceHours = Number(q.since) || 24;
+    const minScore = Number(q.minScore) || 70;
+    const limit = Number(q.limit) || 30;
+    const data = await loadDaily({ sinceHours, minScore, limit });
+    const cc = cacheUntil(reply, 60, data.refreshAt);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "daily", cacheControl: cc, etagOf: data.items });
   }));
 
   app.get("/api/site/pool", siteHandler(async (req, reply) => {
