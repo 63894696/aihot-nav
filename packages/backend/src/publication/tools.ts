@@ -4,12 +4,13 @@
 // "derive from publications" decision). Distinct from /new, which is the last 24h hot window:
 // /tools is a longer window (default 30d), supports category/tag/channel filters, and paginates.
 import type { CategoryKey, ChannelKey } from "@aihot/contracts/taxonomy";
-import type { FeedItemSummary, ToolsResponse, ToolsSort } from "@aihot/contracts/site";
+import type { FeedItemSummary, SiteItemDetail, SiteToolDetail, ToolsResponse, ToolsSort } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
 import {
   ITEM_COLUMNS, ITEM_FROM, categoryCondition, channelCondition, selectedCondition, tagCondition, toFeedItemSummary, type ItemRow,
 } from "./items.ts";
+import { loadItemDetail, siteItemDetail } from "./detail.ts";
 
 /** Tag set that qualifies a publication as a "tool/model/platform" — same set as /new (daily.ts). */
 const TOOL_TAGS = ["新工具", "产品更新", "模型发布", "平台"];
@@ -120,4 +121,62 @@ async function nextToolsRelease(cutoff: Date, q: ToolsQuery, now: Date): Promise
       AND p.tags && ${TOOL_TAGS}::text[]
       ${filterSql(q)}`;
   return row?.t ? row.t.toISOString() : null;
+}
+
+/** Tool detail extras — small, page-cached, and bounded by the current item's id + tags. */
+const UPDATES_WINDOW_DAYS = 7;
+const UPDATES_LIMIT = 8;
+const RELATED_LIMIT = 8;
+
+export type ToolDetailResult =
+  | { kind: "found"; detail: SiteToolDetail }
+  | { kind: "not_found" };
+
+/**
+ * /api/site/tool/:id. Wraps loadItemDetail with two narrow queries:
+ *   - siblings discovered in the last 7 days that share at least one tag (the "recent updates" rail)
+ *   - top-scoring siblings whose tag overlap is ≥ 2 (the "related tools" rail)
+ *
+ * No tools/tools_versions schema exists yet (plan §3.1.2 defers it to W3+); tag overlap is the
+ * only signal we have without a canonical entity table.
+ */
+export async function loadToolDetail(id: string, now = new Date(), original = false): Promise<ToolDetailResult> {
+  const result = await loadItemDetail(id, now);
+  if (result.kind === "not_found") return { kind: "not_found" };
+  // Pin the body language in the underlying ItemDetail before siteItemDetail drops text/translation.
+  const item: SiteItemDetail = siteItemDetail(result.detail, original);
+  const tags = result.row.tags;
+  const [updates, related] = await Promise.all([
+    tags.length > 0 ? loadToolUpdates(id, tags, now) : Promise.resolve([] as FeedItemSummary[]),
+    tags.length > 0 ? loadRelatedTools(id, tags, now) : Promise.resolve([] as FeedItemSummary[]),
+  ]);
+  return { kind: "found", detail: { ...item, updates, related } };
+}
+
+/** Sibling tool/model/platform items sharing at least one tag, discovered in the last 7 days. */
+async function loadToolUpdates(selfId: string, tags: string[], now: Date): Promise<FeedItemSummary[]> {
+  const cutoff = new Date(now.getTime() - UPDATES_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await sql<ItemRow[]>`
+    SELECT ${ITEM_COLUMNS} ${ITEM_FROM}
+    WHERE ${selectedCondition(now)}
+      AND p.tags && ${TOOL_TAGS}::text[]
+      AND p.tags && ${tags}::text[]
+      AND p.discovered_at >= ${cutoff}
+      AND p.article_id <> ${selfId}
+    ORDER BY p.discovered_at DESC, p.article_id DESC
+    LIMIT ${UPDATES_LIMIT}`;
+  return rows.map(toFeedItemSummary);
+}
+
+/** Top-scoring siblings whose tag overlap with the current item is at least 2. */
+async function loadRelatedTools(selfId: string, tags: string[], now: Date): Promise<FeedItemSummary[]> {
+  const rows = await sql<ItemRow[]>`
+    SELECT ${ITEM_COLUMNS} ${ITEM_FROM}
+    WHERE ${selectedCondition(now)}
+      AND p.tags && ${TOOL_TAGS}::text[]
+      AND cardinality(array_intersect(p.tags, ${tags}::text[])) >= 2
+      AND p.article_id <> ${selfId}
+    ORDER BY p.score DESC NULLS LAST, p.sort_at DESC, p.article_id DESC
+    LIMIT ${RELATED_LIMIT}`;
+  return rows.map(toFeedItemSummary);
 }

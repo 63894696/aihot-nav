@@ -8,7 +8,7 @@ import { exportMarkdown, loadItemDetail, siteItemDetail } from "@aihot/backend/p
 import { loadPool, SearchBusyError } from "@aihot/backend/publication/pool";
 import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
-import { loadTools } from "@aihot/backend/publication/tools";
+import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
@@ -158,6 +158,26 @@ export function registerSite(app: FastifyInstance) {
     const result = await loadItemDetail(id);
     if (result.kind === "not_found") return sendProblem(req, reply, { status: 404, code: "not_found", detail: "item not found", cacheControl: "public, max-age=60" });
     return sendJsonWithEtag(req, reply, siteItemDetail(result.detail, true), { etagPrefix: "item-original", cacheControl: "public, max-age=60, s-maxage=60" });
+  }));
+
+  // /tools/:id — same body as /items/:id, plus two narrow rail pieces (last 7d updates +
+  // tag-overlap ≥ 2 related). The plan's tool-detail page renders all three in one column.
+  app.get("/api/site/tool/:id", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "tool not found" });
+    const result = await loadToolDetail(id);
+    if (result.kind === "not_found") return sendProblem(req, reply, { status: 404, code: "not_found", detail: "tool not found", cacheControl: "public, max-age=60" });
+    return sendJsonWithEtag(req, reply, result.detail, { etagPrefix: "tool", cacheControl: "public, max-age=60, s-maxage=60" });
+  }));
+
+  // /tools/:id/original — same as /tools/:id but with body language pinned to the source language
+  // (matches the /items/:id/original projection used by the language toggle in tool.$id.tsx).
+  app.get("/api/site/tool/:id/original", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "tool not found" });
+    const result = await loadToolDetail(id, undefined, true);
+    if (result.kind === "not_found") return sendProblem(req, reply, { status: 404, code: "not_found", detail: "tool not found", cacheControl: "public, max-age=60" });
+    return sendJsonWithEtag(req, reply, result.detail, { etagPrefix: "tool-original", cacheControl: "public, max-age=60, s-maxage=60" });
   }));
 
   app.get("/api/site/stories/:publicId/followups", siteHandler(async (req, reply) => {

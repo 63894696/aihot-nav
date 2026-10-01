@@ -422,5 +422,16 @@ export interface StoryFollowup {
 }
 export interface StoryFollowupsResponse { items: StoryFollowup[]; more: boolean }
 
+/**
+ * /tools/:id payload. Same shape as the /items/:id detail, plus two extras:
+ * - `updates`: siblings published in the last 7 days that share at least one tag (no canonical
+ *   tools/tools_versions schema yet, so "same tool update" is approximated by tag overlap ≥ 1)
+ * - `related`: top-scoring siblings whose tags intersect this item's tags in ≥ 2 places
+ */
+export interface SiteToolDetail extends SiteItemDetail {
+  updates: FeedItemSummary[];
+  related: FeedItemSummary[];
+}
+
 /** All issue keys keep numbering and calendars stable; closed daily months omit their titles. */
 export interface ReportNavigationEntry { key: string; title?: string | null; count?: number }

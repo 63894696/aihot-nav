@@ -11,7 +11,7 @@ export function ToolGrid({ items }: { items: FeedItemSummary[] }) {
     <ol className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
       {items.map((it, i) => (
         <li key={it.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}>
-          <FeedItem item={it} read={readSet.has(it.id)} onOpen={markRead} showTags />
+          <FeedItem item={it} read={readSet.has(it.id)} onOpen={markRead} showTags linkPrefix={"/tools" as `/tools/${string}`} />
         </li>
       ))}
     </ol>

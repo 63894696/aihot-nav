@@ -14,6 +14,8 @@ export default [
   route("daily/:key", "routes/report-detail.tsx", { id: "daily-detail" }),
   route("new", "routes/new.tsx"),
   route("tools", "routes/tools.tsx"),
+  route("tools/:id", "routes/tool.$id.tsx"),
+  route("tools/:id/original", "routes/tool-original.tsx", { id: "tool-original" }),
   route("weekly", "routes/report-latest.tsx", { id: "weekly-latest" }),
   route("weekly/:key", "routes/report-detail.tsx", { id: "weekly-detail" }),
   route("monthly", "routes/report-latest.tsx", { id: "monthly-latest" }),
