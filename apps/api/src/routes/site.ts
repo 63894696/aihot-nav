@@ -9,11 +9,12 @@ import { loadPool, SearchBusyError } from "@aihot/backend/publication/pool";
 import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
+import { loadChangelog } from "@aihot/backend/publication/changelog";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
 import { loadHotStrip } from "@aihot/backend/events/hot-read";
-import { loadChangelog, siteMeta } from "@aihot/backend/site/meta";
+import { loadReleases, siteMeta } from "@aihot/backend/site/meta";
 import { loadContact, loadMakerAvatar } from "@aihot/backend/site/contact";
 import { loadSiteStats } from "@aihot/backend/site/stats";
 import { itemAvailability } from "@aihot/backend/publication/availability";
@@ -217,8 +218,26 @@ export function registerSite(app: FastifyInstance) {
     return sendJsonWithEtag(req, reply, await loadSiteStats(), { etagPrefix: "stats", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
+  app.get("/api/site/releases", siteHandler(async (req, reply) => {
+    return sendJsonWithEtag(req, reply, loadReleases(), { etagPrefix: "releases", cacheControl: "public, max-age=300, s-maxage=300" });
+  }));
+
+  // W4a — tool/model/platform update aggregation (path migrated from /changelog on 2026-10-01;
+  // the legacy /changelog endpoint served industry/changelog.json which is now industry/releases.json).
   app.get("/api/site/changelog", siteHandler(async (req, reply) => {
-    return sendJsonWithEtag(req, reply, loadChangelog(), { etagPrefix: "changelog", cacheControl: "public, max-age=300, s-maxage=300" });
+    const q = looseQuery(req);
+    const channel = q.channel ?? "all";
+    if (!isChannelKey(channel)) return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid channel" });
+    const category = q.category ?? null;
+    if (category !== null && !isCategoryKey(category)) return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid category" });
+    const tag = q.tag?.trim() ? q.tag.trim().slice(0, 60) : null;
+    const windowDays = Number(q.windowDays) || 30;
+    const limit = Number(q.limit) || 60;
+    const cursor = q.cursor || null;
+    const data = await loadChangelog({ channel, category: category as CategoryKey | null, tag, windowDays, limit, cursor });
+    const cc = cacheUntil(reply, 60, data.refreshAt);
+    const { generatedAt: _, ...content } = data;
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "changelog", cacheControl: cc, etagOf: content });
   }));
 
   app.get("/api/site/items/availability", siteHandler(async (req, reply) => {

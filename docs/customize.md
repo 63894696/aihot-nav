@@ -101,10 +101,10 @@
 
 请不要使用 AIHOT 的名字和 Logo。
 
-## 8. 页面文案：`industry/pages/`、`industry/changelog.json`
+## 8. 页面文案：`industry/pages/`、`industry/releases.json`
 
 - `pages/terms.md`、`pages/privacy.md`：使用规则和隐私说明。**现在是模板**，上线前按你的实际情况改写，必要时请专业人士看一下。
-- `changelog.json`：更新日志。新条目写在最前面，把 `latestVersion` 改成它的日期和时间。
+- `releases.json`：更新日志(/releases 页面)。新条目写在最前面，把 `latestVersion` 改成它的日期和时间。
 
 ## 9. 模型和部署
 

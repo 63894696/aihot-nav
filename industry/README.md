@@ -13,5 +13,5 @@
 | `features.ts` | 模型榜、Codex 重置监控的开关 |
 | `brand/` | 图标、Logo、日报周报月报的报头字 |
 | `pages/` | 使用规则、隐私说明（模板，上线前按实际情况改写） |
-| `changelog.json` | 更新日志 |
+| `releases.json` | 更新日志 |
 | `gold.example.jsonl` | 精选评测样本的格式示例 |

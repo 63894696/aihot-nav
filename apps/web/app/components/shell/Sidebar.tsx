@@ -2,13 +2,13 @@ import { SITE } from "@aihot/industry/site";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { Wordmark } from "../Logo";
-import { useChangelogSeen } from "../../lib/local-state";
+import { useReleasesSeen } from "../../lib/local-state";
 import { SIDEBAR, tabIsActive, type NavItem } from "./nav";
 import { ThemeSwitch } from "./ThemeSwitch";
 
-/** True while the changelog has an entry newer than the one this reader last opened. */
-export function useChangelogDot(latestVersion: string | null): boolean {
-  const seen = useChangelogSeen();
+/** True while the site releases log has an entry newer than the one this reader last opened. */
+export function useReleasesDot(latestVersion: string | null): boolean {
+  const seen = useReleasesSeen();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted || !latestVersion) return false;
@@ -33,13 +33,13 @@ function SideLink({ item, dot }: { item: NavItem; dot: boolean }) {
         <Icon size={17} />
       </span>
       <span className="min-w-0 truncate">{item.label}</span>
-      {dot && item.changelog && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-hot" aria-label="有新的更新" />}
+      {dot && item.releasesDot && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-hot" aria-label="有新的更新" />}
     </Link>
   );
 }
 
-export function Sidebar({ changelogVersion }: { changelogVersion: string | null }) {
-  const dot = useChangelogDot(changelogVersion);
+export function Sidebar({ releasesVersion }: { releasesVersion: string | null }) {
+  const dot = useReleasesDot(releasesVersion);
   return (
     <aside className="sticky top-0 hidden h-dvh w-[180px] shrink-0 flex-col border-r border-line bg-sidebar px-3 pb-3.5 pt-6 lg:flex">
       <Link to="/" className="mb-4 flex h-[50px] items-center px-1 text-ink" aria-label={`${SITE.name} 首页`}>

@@ -1,4 +1,4 @@
-// Small site-wide facts for the web shell (e.g. the changelog red-dot anchor).
+// Small site-wide facts for the web shell (e.g. the releases red-dot anchor).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "../config.ts";
@@ -11,18 +11,19 @@ export interface ChangelogRelease {
   body: string[];
 }
 
-let changelogCache: { latestVersion: string; releases: ChangelogRelease[] } | null = null;
+let releasesCache: { latestVersion: string; releases: ChangelogRelease[] } | null = null;
 
-/** Changelog is published as a data file in the industry pack (industry/changelog.json), newest first. */
-export function loadChangelog() {
-  if (!changelogCache) {
-    const file = process.env.AIHOT_CHANGELOG_FILE || path.join(REPO_ROOT, "industry/changelog.json");
+/** Site releases are published as a data file in the industry pack (industry/releases.json), newest first.
+ *  (W4a path migration: was industry/changelog.json up to 2026-10-01.) */
+export function loadReleases() {
+  if (!releasesCache) {
+    const file = process.env.AIHOT_RELEASES_FILE || path.join(REPO_ROOT, "industry/releases.json");
     const data = JSON.parse(readFileSync(file, "utf8")) as { latestVersion: string; releases: ChangelogRelease[] };
-    changelogCache = data;
+    releasesCache = data;
   }
-  return changelogCache;
+  return releasesCache;
 }
 
 export function siteMeta() {
-  return { changelogVersion: loadChangelog().latestVersion };
+  return { releasesVersion: loadReleases().latestVersion };
 }

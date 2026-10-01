@@ -25,14 +25,14 @@ export const links: Route.LinksFunction = () => [
 ];
 
 interface SiteMeta {
-  changelogVersion: string | null;
+  releasesVersion: string | null;
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
   try {
     return await apiGet<SiteMeta>("/api/site/meta", { signal: request.signal });
   } catch {
-    return { changelogVersion: null } satisfies SiteMeta;
+    return { releasesVersion: null } satisfies SiteMeta;
   }
 }
 
@@ -67,7 +67,7 @@ export function meta({ error }: Route.MetaArgs) {
 }
 
 /** Sidebar, main column and phone tab bar around a page (or an error). */
-function SiteShell({ changelogVersion, children }: { changelogVersion: string | null; children: ReactNode }) {
+function SiteShell({ releasesVersion, children }: { releasesVersion: string | null; children: ReactNode }) {
   const navigation = useNavigation();
   return (
     <div className="flex min-h-dvh">
@@ -75,13 +75,13 @@ function SiteShell({ changelogVersion, children }: { changelogVersion: string | 
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-control focus:bg-surface focus:px-3 focus:py-2">
         跳到正文
       </a>
-      <Sidebar changelogVersion={changelogVersion} />
+      <Sidebar releasesVersion={releasesVersion} />
       {/* Mobile shell (≤ 960px): one centred column, the tab bar below. Desktop: the page fills the main area
           up to the list width (--page-max-wide), centred beyond it. */}
       <main id="main" className="min-w-0 flex-1 pb-[calc(72px+env(safe-area-inset-bottom))] lg:px-7 lg:pb-[72px] lg:pt-6">
         <div className="mx-auto w-full max-w-[640px] px-4 lg:max-w-[var(--page-max-wide)] lg:px-0">{children}</div>
       </main>
-      <MobileTabBar changelogVersion={changelogVersion} />
+      <MobileTabBar releasesVersion={releasesVersion} />
       <BackToTop />
     </div>
   );
@@ -94,7 +94,7 @@ export default function App() {
   // The admin has its own chrome.
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return <Outlet />;
   return (
-    <SiteShell changelogVersion={meta.changelogVersion}>
+    <SiteShell releasesVersion={meta.releasesVersion}>
       <Outlet />
     </SiteShell>
   );
@@ -128,5 +128,5 @@ export function ErrorBoundary() {
   );
   // Admin errors stay inside the admin's own chrome.
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return body;
-  return <SiteShell changelogVersion={site?.changelogVersion ?? null}>{body}</SiteShell>;
+  return <SiteShell releasesVersion={site?.releasesVersion ?? null}>{body}</SiteShell>;
 }

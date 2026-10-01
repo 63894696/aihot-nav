@@ -72,7 +72,7 @@ publications.type 过滤(tool_release / tool_update / model_release / research_p
   ↓
 /api/site/* 公开出口
   ↓
-apps/web React Router v7 SSR → daily / tools / tools/:id / changelog / papers / prompts
+apps/web React Router v7 SSR → daily / tools / tools/:id / releases / changelog / papers / prompts
 ```
 
 详细架构见 [`docs/`](docs/)。后端信息处理设计借鉴 aihot 上游,**不照抄 schema**。
@@ -94,7 +94,7 @@ apps/web React Router v7 SSR → daily / tools / tools/:id / changelog / papers 
 | `features.ts` | 模块开关 |
 | `brand/` | 图标、Logo、报头字 |
 | `pages/` | 使用规则、隐私说明(模板,上线前按实际情况改写) |
-| `changelog.json` | 更新日志 |
+| `releases.json` | 更新日志 |
 
 通常不需要改 `apps/` 和 `packages/`。
 

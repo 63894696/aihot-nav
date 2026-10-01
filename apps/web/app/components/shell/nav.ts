@@ -12,8 +12,8 @@ export interface NavItem {
   icon: (p: { size?: number }) => ReactNode;
   /** Match the path exactly (the home page). */
   end?: boolean;
-  /** Shows the unread dot while the changelog has news. */
-  changelog?: boolean;
+  /** Shows the unread dot while the site releases log has news. */
+  releasesDot?: boolean;
 }
 
 export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
@@ -47,7 +47,7 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { to: "/agent", label: "Agent 接入", icon: IconPlug },
       { to: "/about", label: "关于", icon: IconHeart },
-      { to: "/changelog", label: "更新日志", icon: IconHistory, changelog: true },
+      { to: "/releases", label: "更新日志", icon: IconHistory, releasesDot: true },
       { to: "/feedback", label: "反馈", icon: IconMessage },
     ],
   },
@@ -57,11 +57,11 @@ export const TABBAR: NavItem[] = [
   { to: "/", label: "精选", icon: IconBolt, end: true },
   { to: "/tools", label: withSubject("工具"), icon: IconGrid },
   { to: "/all", label: "全部", icon: IconList },
-  { to: "/more", label: "更多", icon: IconApps, changelog: true },
+  { to: "/more", label: "更多", icon: IconApps, releasesDot: true },
 ];
 
 /** Pages reached from the mobile "更多" tab keep that tab highlighted. */
-export const MORE_PATHS = ["/more", "/hot", "/topics", "/starred", "/leaderboard", "/codex-reset", "/agent", "/about", "/changelog", "/feedback", "/terms", "/privacy"];
+export const MORE_PATHS = ["/more", "/hot", "/topics", "/starred", "/leaderboard", "/codex-reset", "/agent", "/about", "/releases", "/changelog", "/feedback", "/terms", "/privacy"];
 
 export function tabIsActive(item: NavItem, pathname: string): boolean {
   if (item.end) return pathname === item.to;

@@ -157,7 +157,7 @@ function Maker({ maker, contact }: { maker: NonNullable<typeof ABOUT.maker>; con
           ))}
           <p className="text-ink-3">
             它一直在改，改了什么都写在
-            <Link to="/changelog" className="text-accent hover:underline">
+            <Link to="/releases" className="text-accent hover:underline">
               更新日志
             </Link>
             里；有想法、遇到问题，去

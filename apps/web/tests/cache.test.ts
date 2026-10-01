@@ -31,7 +31,7 @@ const api = createServer((req, res) => {
   apiCookies.push(req.headers.cookie);
   res.setHeader("Content-Type", "application/json");
   if (url.pathname === "/api/site/meta") {
-    const respond = () => res.end(JSON.stringify({ changelogVersion: "2026-09-28T12:00" }));
+    const respond = () => res.end(JSON.stringify({ releasesVersion: "2026-09-28T12:00" }));
     return metaDelayMs ? setTimeout(respond, metaDelayMs) : respond();
   }
   if (url.pathname === "/api/site/timeline") {

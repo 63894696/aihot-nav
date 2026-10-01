@@ -7,7 +7,7 @@ export const KEYS = {
   starred: "aihot-starred-items",
   read: "aihot-read-items",
   theme: "aihot-theme",
-  changelogSeen: "aihot-changelog-seen-version",
+  releasesSeen: "aihot-releases-seen-version",
   feedbackDraft: "aihot-feedback-draft-v1",
 } as const;
 
@@ -87,7 +87,7 @@ function subscribeKey(key: string) {
 const subscribeStarred = subscribeKey(KEYS.starred);
 const subscribeRead = subscribeKey(KEYS.read);
 const subscribeTheme = subscribeKey(KEYS.theme);
-const subscribeChangelog = subscribeKey(KEYS.changelogSeen);
+const subscribeReleases = subscribeKey(KEYS.releasesSeen);
 
 // Snapshot cache so useSyncExternalStore gets stable references between changes.
 const cache = new Map<string, unknown>();
@@ -230,15 +230,15 @@ export function resolvedTheme(pref: ThemePreference = getThemePreference()): "li
 /** Inline script run before paint so the first frame already has the reader's theme. */
 export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('${KEYS.theme}');if(t==='"light"'||t==='"dark"')t=JSON.parse(t);if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','light')}})();`;
 
-// --- changelog red dot ---
-export function getChangelogSeen(): string | null {
-  const v = readRaw(KEYS.changelogSeen);
+// --- releases red dot (was changelog up to 2026-10-01, /changelog migrated to W4a tool aggregation) ---
+export function getReleasesSeen(): string | null {
+  const v = readRaw(KEYS.releasesSeen);
   return v && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v) ? v : null;
 }
 
-export function setChangelogSeen(version: string) {
-  writeRaw(KEYS.changelogSeen, version);
-  invalidate(KEYS.changelogSeen);
+export function setReleasesSeen(version: string) {
+  writeRaw(KEYS.releasesSeen, version);
+  invalidate(KEYS.releasesSeen);
 }
 
 // --- export / import (version 1) ---
@@ -343,6 +343,6 @@ export function useThemePreference(): ThemePreference {
   return useSyncExternalStore(subscribeTheme, getThemePreference, () => null);
 }
 
-export function useChangelogSeen(): string | null {
-  return useSyncExternalStore(subscribeChangelog, getChangelogSeen, () => null);
+export function useReleasesSeen(): string | null {
+  return useSyncExternalStore(subscribeReleases, getReleasesSeen, () => null);
 }
