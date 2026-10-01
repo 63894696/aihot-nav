@@ -5,7 +5,7 @@ import { SITE } from "@aihot/industry/site";
 import type { PaperDetail } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
 import { useState } from "react";
-import { apiGet, loadOr404 } from "../lib/api.server";
+import { loadOr404 } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
 import { breadcrumbLd } from "../lib/seo";
 import { beijingDate } from "@aihot/contracts/time";
