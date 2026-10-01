@@ -170,11 +170,13 @@ async function loadToolUpdates(selfId: string, tags: string[], now: Date): Promi
 
 /** Top-scoring siblings whose tag overlap with the current item is at least 2. */
 async function loadRelatedTools(selfId: string, tags: string[], now: Date): Promise<FeedItemSummary[]> {
+  // `&&` returns true when arrays share any element; cardinality of the AND of the two arrays is the
+  // actual intersection count. Postgres 13+ removed array_intersect(); compose the overlap ourselves.
   const rows = await sql<ItemRow[]>`
     SELECT ${ITEM_COLUMNS} ${ITEM_FROM}
     WHERE ${selectedCondition(now)}
       AND p.tags && ${TOOL_TAGS}::text[]
-      AND cardinality(array_intersect(p.tags, ${tags}::text[])) >= 2
+      AND cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tags}::text[]))) >= 2
       AND p.article_id <> ${selfId}
     ORDER BY p.score DESC NULLS LAST, p.sort_at DESC, p.article_id DESC
     LIMIT ${RELATED_LIMIT}`;
