@@ -7,6 +7,7 @@ import { loadItemShare } from "@aihot/backend/publication/og";
 import { loadReport, type ReportKind } from "@aihot/backend/publication/reports";
 import { loadTopic } from "@aihot/backend/publication/topics";
 import { loadStoryDetail, resolveStory } from "@aihot/backend/publication/stories";
+import { loadPaperShare } from "@aihot/backend/publication/papers";
 import { SITE, withSubject } from "@aihot/industry/site";
 import { FEATURES } from "@aihot/industry/features";
 import { config } from "@aihot/backend/config";
@@ -29,6 +30,7 @@ const PAGES: Record<string, OgCard> = {
   privacy: { kicker: "隐私说明", title: `${SITE.name} 隐私说明`, subtitle: "访问日志、浏览器本地数据与反馈资料的处理方式。" },
   changelog: { kicker: "工具动态", title: `${SITE.name} 工具动态`, subtitle: "AI 工具 / 模型 / 平台最近的产品更新。" },
   releases: { kicker: "更新日志", title: `${SITE.name} 更新日志`, subtitle: "功能更新、优化、公告与下线记录。" },
+  papers: { kicker: "论文解读", title: `${SITE.name} 论文 / 预印本解读`, subtitle: "arXiv AI 论文的中文摘要、关键要点与原文链接。", accent: "violet" },
   feedback: { kicker: "反馈", title: "告诉我们哪里可以更好", subtitle: "内容、功能、接入，或来源方的更正与下架请求。" },
   agent: { kicker: "Agent 接入", title: `让 Agent 直接使用 ${SITE.name}`, subtitle: "MCP、RSS 与 REST API v1，匿名只读。" },
 };
@@ -134,5 +136,21 @@ export function registerOg(app: FastifyInstance) {
       meta: `${s.sourceCount} 个来源 · ${s.reportCount} 篇报道`,
       accent: s.whyHot.rank ? "hot" : "teal",
     }, 3600);
+  });
+
+  // W4b — arXiv paper OG cards (longer cache than news because papers live forever; cached
+  // by paper id + translation status so a fresh translation invalidates the share image).
+  app.get("/og/papers/:file", async (req, reply) => {
+    const file = (req.params as { file: string }).file;
+    if (!file.endsWith(".png")) return notFound(reply);
+    const d = await loadPaperShare(file.slice(0, -4));
+    if (!d) return notFound(reply);
+    return send(req, reply, {
+      kicker: d.primaryCategory,
+      title: d.titleZh ?? d.titleEn,
+      subtitle: d.abstractZhFull?.slice(0, 200) ?? d.abstractEnFull.slice(0, 200),
+      meta: `${d.authors.slice(0, 3).join(" · ")}${d.authors.length > 3 ? " …" : ""} · ${beijingDate(d.publishedAt)}`,
+      accent: "violet",
+    }, 86400);
   });
 }

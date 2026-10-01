@@ -20,7 +20,7 @@ export interface OgCard {
   meta?: string | null;
   /** Small emphasised figure on the right (e.g. an item score). */
   badge?: { value: string; label: string } | null;
-  accent?: "teal" | "hot" | "amber";
+  accent?: "teal" | "hot" | "amber" | "violet";
 }
 
 let fontsPromise: Promise<Array<{ name: string; data: Buffer; weight: 400 | 700; style: "normal" }>> | null = null;
@@ -50,7 +50,7 @@ export function nameMark(size: number, color: string, dot: string): Node {
 export type Node = { type: string; props: Record<string, unknown> & { style?: Record<string, unknown>; children?: unknown } };
 export const h = (type: string, style: Record<string, unknown>, children?: unknown, extra: Record<string, unknown> = {}): Node => ({ type, props: { style, children, ...extra } });
 
-const ACCENTS = { teal: "#2ce2e8", hot: "#ff7a5f", amber: "#e2b454" } as const;
+const ACCENTS = { teal: "#2ce2e8", hot: "#ff7a5f", amber: "#e2b454", violet: "#7c5cff" } as const;
 
 function clamp(text: string, max: number) {
   const chars = [...text.replace(/\s+/g, " ").trim()];

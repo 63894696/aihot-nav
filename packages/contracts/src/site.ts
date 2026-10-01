@@ -168,6 +168,68 @@ export interface ToolsResponse {
   generatedAt: string;
 }
 
+/** /papers — translation-officer feed (W4b plan §2.1). One card per arXiv paper; independent
+ *  of publications because papers have a long-lived lifecycle (no 7-day window, no 5-axis
+ *  score, no editorial "selected" gate). LLM-translated columns are filled in by the worker
+ *  after the fetcher writes the raw English row. */
+export type PaperStatus = "fetched" | "translating" | "translated" | "partial" | "failed";
+
+export interface PaperSummary {
+  /** The arXiv canonical id, e.g. "2601.12345". */
+  id: string;
+  titleEn: string;
+  /** null when status is fetched/failed; LLM-translated otherwise. */
+  titleZh: string | null;
+  /** First 240 chars of the English abstract — enough for the card, full text on detail. */
+  abstractEn: string;
+  /** null when not yet translated. */
+  abstractZh: string | null;
+  /** First 6 authors + "et al." sentinel for longer lists (detail page shows the full list). */
+  authors: string[];
+  primaryCategory: string;
+  publishedAt: string;
+  absUrl: string;
+  status: PaperStatus;
+}
+
+export interface PaperFilters {
+  category: string | null;
+  tag: string | null;
+}
+
+export interface PapersQuery {
+  category?: string | null;
+  tag?: string | null;
+  windowDays?: number;
+  limit?: number;
+  cursor?: string | null;
+  now?: Date;
+}
+
+export interface PapersResponse {
+  filters: PaperFilters;
+  items: PaperSummary[];
+  nextCursor: string | null;
+  /** Earliest upcoming fetch window inside the active filter — caches expire then so a new
+   *  arXiv drop appears promptly. */
+  refreshAt: string | null;
+  windowDays: number;
+  generatedAt: string;
+}
+
+export interface PaperDetail extends PaperSummary {
+  /** Full English abstract (no truncation). */
+  abstractEnFull: string;
+  /** Full Chinese abstract when translated; null otherwise. */
+  abstractZhFull: string | null;
+  /** 3-5 short bullets extracted by the LLM; [] until translated. */
+  keyPoints: string[];
+  pdfUrl: string;
+  fetchedAt: string;
+  translatedAt: string | null;
+  summaryModel: string | null;
+}
+
 export interface OutlineEntry {
   id: string;
   text: string;

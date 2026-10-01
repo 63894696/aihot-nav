@@ -10,6 +10,7 @@ import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
+import { loadPapers, loadPaperDetail } from "@aihot/backend/publication/papers";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
@@ -238,6 +239,26 @@ export function registerSite(app: FastifyInstance) {
     const cc = cacheUntil(reply, 60, data.refreshAt);
     const { generatedAt: _, ...content } = data;
     return sendJsonWithEtag(req, reply, data, { etagPrefix: "changelog", cacheControl: cc, etagOf: content });
+  }));
+
+  // W4b — arXiv paper translation-officer feed. Independent of publications; cursor on (published_at, arxiv_id).
+  app.get("/api/site/papers", siteHandler(async (req, reply) => {
+    const q = looseQuery(req);
+    const category = q.category?.trim() ? q.category.trim().slice(0, 20) : null;
+    const tag = q.tag?.trim() ? q.tag.trim().slice(0, 60) : null;
+    const windowDays = Number(q.windowDays) || 30;
+    const limit = Number(q.limit) || 24;
+    const cursor = q.cursor || null;
+    const data = await loadPapers({ category, tag, windowDays, limit, cursor });
+    const cc = cacheUntil(reply, 60, data.refreshAt);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "papers", cacheControl: cc });
+  }));
+
+  app.get("/api/site/papers/:id", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const d = await loadPaperDetail(id);
+    if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "paper not found" });
+    return sendJsonWithEtag(req, reply, d, { etagPrefix: "paper", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   app.get("/api/site/items/availability", siteHandler(async (req, reply) => {
