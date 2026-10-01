@@ -25,6 +25,8 @@ import { backupConfigured, runBackup } from "@aihot/backend/operations/backup";
 import { sourceHealthWeekly } from "@aihot/backend/operations/reports";
 import { markStalePendingReceipts } from "@aihot/backend/providers/receipts";
 import { markStaleDeliveries } from "@aihot/backend/notify/deliver";
+import { fetchArxivFeeds } from "./jobs/arxiv-fetch.ts";
+import { translateArxivPending } from "./jobs/arxiv-translate.ts";
 
 interface Scheduled {
   name: string;
@@ -94,6 +96,10 @@ export const SCHEDULES: Scheduled[] = [
         { name: "monitor.lookback", cron: "40 4 * * *", run: () => monitorTick({ lookbackHours: 48 }) },
       ]
     : []),
+  // W4b: arXiv paper fetch (5 topic RSS) and LLM translation of pending papers.
+  // Translate runs singleton: two parallel runs would double-call the LLM on the same row.
+  { name: "arxiv.fetch", cron: "*/20 * * * *", run: () => fetchArxivFeeds() },
+  { name: "arxiv.translate", cron: "*/5 * * * *", missed: "once", run: () => translateArxivPending() },
 ];
 
 export async function registerSchedules(boss: PgBoss) {

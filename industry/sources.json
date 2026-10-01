@@ -383,6 +383,116 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-arxiv-csai",
+      "name": "arXiv cs.AI",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://export.arxiv.org/rss/cs.AI",
+        "_aihot": {
+          "initialBackfillLimit": 30
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 60,
+      "tags": [
+        "论文",
+        "arXiv"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-arxiv-cscl",
+      "name": "arXiv cs.CL",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://export.arxiv.org/rss/cs.CL",
+        "_aihot": {
+          "initialBackfillLimit": 30
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 60,
+      "tags": [
+        "论文",
+        "arXiv"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-arxiv-cslg",
+      "name": "arXiv cs.LG",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://export.arxiv.org/rss/cs.LG",
+        "_aihot": {
+          "initialBackfillLimit": 30
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 60,
+      "tags": [
+        "论文",
+        "arXiv"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-arxiv-cscv",
+      "name": "arXiv cs.CV",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://export.arxiv.org/rss/cs.CV",
+        "_aihot": {
+          "initialBackfillLimit": 30
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 60,
+      "tags": [
+        "论文",
+        "arXiv"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-arxiv-csro",
+      "name": "arXiv cs.RO",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://export.arxiv.org/rss/cs.RO",
+        "_aihot": {
+          "initialBackfillLimit": 30
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 60,
+      "tags": [
+        "论文",
+        "arXiv"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
     }
   ]
 }

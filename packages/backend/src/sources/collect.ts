@@ -323,9 +323,13 @@ export async function scheduleDueSources(limit = Number(process.env.FETCH_SCHEDU
   const kinds: string[] = (process.env.COLLECT_KINDS || "rss,web_list,json_list,x_search").split(",");
   // Listings fetched through Jina Reader are paid; development can leave them out.
   const skipJina = process.env.COLLECT_SKIP_JINA === "true";
+  // Sources in participation_mode='isolated' are fetched but not surfaced through the editorial
+  // pipeline (e.g. arXiv feeds owned by the dedicated arxiv-fetch job — see apps/worker/src/jobs/arxiv-fetch.ts).
+  // Skipping them here keeps one writer per source.
   const rows = await sql<{ id: string }[]>`
     SELECT id FROM sources
-    WHERE enabled AND kind IN ${sql(kinds)} AND (next_fetch_at IS NULL OR next_fetch_at <= now()) AND NOT (${sharded()})
+    WHERE enabled AND kind IN ${sql(kinds)} AND participation_mode <> 'isolated'
+      AND (next_fetch_at IS NULL OR next_fetch_at <= now()) AND NOT (${sharded()})
       ${skipJina ? sql`AND config::text NOT LIKE '%r.jina.ai%'` : sql``}
     ORDER BY next_fetch_at NULLS FIRST LIMIT ${limit}`;
   for (const r of rows) {
