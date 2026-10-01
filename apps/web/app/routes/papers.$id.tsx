@@ -4,6 +4,7 @@
 import { SITE } from "@aihot/industry/site";
 import type { PaperDetail } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
+import type { Route } from "./+types/papers.$id";
 import { useState } from "react";
 import { loadOr404 } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
@@ -16,11 +17,12 @@ export function headers() {
   return { "Cache-Control": "public, max-age=0, s-maxage=300, stale-while-revalidate=600" };
 }
 
-export async function loader({ request, params }: { request: Request; params: { id: string } }) {
+export async function loader({ request, params }: Route.LoaderArgs) {
   return loadOr404<PaperDetail>(`/api/site/papers/${encodeURIComponent(params.id)}`, { signal: request.signal });
 }
 
-export function meta({ data }: { data?: PaperDetail }) {
+export function meta({ loaderData }: Route.MetaArgs) {
+  const data = loaderData as PaperDetail | undefined;
   if (!data) return pageMeta({ title: "论文", path: "/papers", noindex: true });
   const title = data.titleZh ?? data.titleEn;
   const description = (data.abstractZh ?? data.abstractEn).slice(0, 200);
