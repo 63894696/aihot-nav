@@ -28,6 +28,8 @@ export default [
   route("privacy", "routes/privacy.tsx"),
   route("releases", "routes/releases.tsx"),
   route("changelog", "routes/changelog.tsx"),
+  route("papers", "routes/papers.tsx"),
+  route("papers/:id", "routes/papers.$id.tsx"),
   route("feedback", "routes/feedback.tsx"),
   route("more", "routes/more.tsx"),
   route("starred", "routes/starred.tsx"),
