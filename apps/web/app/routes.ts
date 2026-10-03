@@ -30,6 +30,8 @@ export default [
   route("changelog", "routes/changelog.tsx"),
   route("papers", "routes/papers.tsx"),
   route("papers/:id", "routes/papers.$id.tsx"),
+  route("prompts", "routes/prompts.tsx"),
+  route("prompts/:id", "routes/prompts.$id.tsx"),
   route("feedback", "routes/feedback.tsx"),
   route("more", "routes/more.tsx"),
   route("starred", "routes/starred.tsx"),

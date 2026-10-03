@@ -1,5 +1,5 @@
 {
-  "$comment": "W5-2 search engine query list. Hand-curated, MVP 12, expand to 30-50 in W5-3. Each entry is one intent, run against SearXNG (10 instances, round-robin), HN Algolia, and GitHub Trending. Cron: every 60 minutes (apps/worker/src/schedules.ts -> search.fetch). Schema changes need a worker restart.",
+  "$comment": "W5-2 search engine query list (id prefix 'search-' implied by category). Hand-curated. Each entry is one intent, run against SearXNG (10 instances, round-robin), HN Algolia, and GitHub Trending. Cron: every 60 minutes (apps/worker/src/schedules.ts -> search.fetch). Schema changes need a worker restart.\n\nW5-3 prompt column queries (id prefix 'prompt-'): same SearXNG instances, but consumed by a SEPARATE worker job (apps/worker/src/jobs/prompt-fetch.ts — NOT search-fetch.ts; prompt queries write directly to prompt_items, not articles, so no searchMeta badge and no editorial re-score). HN Algolia / GitHub Trending are NOT run for prompts — they don't surface prompt content well. Cron: every 60 minutes, separate schedule slot. Worker job is NOT in this commit — see docs/features/prompts-collection.md §WBS for V1 sequencing.",
   "version": "2026-10-03",
   "queries": [
     { "id": "new-llm-release",  "q": "new LLM release October 2026",          "lang": "en", "category": "model_release" },
@@ -13,6 +13,17 @@
     { "id": "local-llm-news",   "q": "local LLM ollama llama.cpp",           "lang": "en", "category": "tool_update" },
     { "id": "video-gen-2026",   "q": "video generation model 2026",          "lang": "en", "category": "tool_release" },
     { "id": "image-gen-2026",   "q": "image generation model 2026",          "lang": "en", "category": "tool_release" },
-    { "id": "ai-coding-tools",  "q": "AI coding assistant 2026",             "lang": "en", "category": "tool_release" }
+    { "id": "ai-coding-tools",  "q": "AI coding assistant 2026",             "lang": "en", "category": "tool_release" },
+
+    { "id": "prompt-writing-en",  "q": "writing prompt template example",                  "lang": "en", "category": "prompt" },
+    { "id": "prompt-writing-zh",  "q": "写作 提示词 模板",                                "lang": "zh", "category": "prompt" },
+    { "id": "prompt-painting-en", "q": "painting prompt stable diffusion example",         "lang": "en", "category": "prompt" },
+    { "id": "prompt-painting-zh", "q": "绘画 提示词 stable diffusion 模板",                "lang": "zh", "category": "prompt" },
+    { "id": "prompt-study-en",    "q": "study learning prompt template AI tutor",          "lang": "en", "category": "prompt" },
+    { "id": "prompt-study-zh",    "q": "学习 提示词 模板 AI 老师",                        "lang": "zh", "category": "prompt" },
+    { "id": "prompt-research-en", "q": "research prompt template market analysis",         "lang": "en", "category": "prompt" },
+    { "id": "prompt-research-zh", "q": "调研 提示词 市场分析 模板",                       "lang": "zh", "category": "prompt" },
+    { "id": "prompt-design-en",   "q": "design prompt UI UX template",                     "lang": "en", "category": "prompt" },
+    { "id": "prompt-design-zh",   "q": "设计 提示词 UI UX 模板",                           "lang": "zh", "category": "prompt" }
   ]
 }

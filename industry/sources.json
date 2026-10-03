@@ -1,5 +1,5 @@
 {
-  "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里增删改。字段说明见 docs/customize.md。",
+  "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里增删改。字段说明见 docs/customize.md。W5-3 prompt 栏目信源：sources.json 配 'external' kind 留口子待人工推,主要信源由 industry/search-queries.json 里 prompt 类 query 走 SearXNG(与 W5-2 共用 10 个实例)补漏——见 docs/features/prompts-collection.md。",
   "sources": [
     {
       "id": "rss-openai-news",

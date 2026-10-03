@@ -10,6 +10,8 @@ import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
 import { loadPapers, loadPaperDetail } from "@aihot/backend/publication/papers";
+import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
+import { PROMPT_CATEGORIES, type PromptCategory } from "@aihot/contracts/site";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
@@ -251,6 +253,42 @@ export function registerSite(app: FastifyInstance) {
     const d = await loadPaperDetail(id);
     if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "paper not found" });
     return sendJsonWithEtag(req, reply, d, { etagPrefix: "paper", cacheControl: "public, max-age=300, s-maxage=300" });
+  }));
+
+  // W5-3 — prompt column. Public read layer for reusable prompts collected from public posts.
+  app.get("/api/site/prompts", siteHandler(async (req, reply) => {
+    const q = looseQuery(req);
+    const categoryParam = q.category?.trim() || null;
+    const category = categoryParam && (PROMPT_CATEGORIES as readonly string[]).includes(categoryParam)
+      ? (categoryParam as PromptCategory)
+      : null;
+    if (categoryParam && category === null) {
+      return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid category" });
+    }
+    const windowDays = Number(q.windowDays) || 90;
+    const limit = Number(q.limit) || 24;
+    const cursor = q.cursor || null;
+    let data;
+    try {
+      data = await loadPrompts({ category, windowDays, limit, cursor });
+    } catch (e) {
+      if (e instanceof InvalidCursorError) {
+        return sendProblem(req, reply, { status: 400, code: "invalid_cursor", detail: "cursor does not match this query" });
+      }
+      throw e;
+    }
+    const cc = cacheUntil(reply, 60, data.refreshAt);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "prompts", cacheControl: cc });
+  }));
+
+  app.get("/api/site/prompts/:id", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^\d+$/.test(id)) {
+      return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid prompt id" });
+    }
+    const d = await loadPromptDetail(id);
+    if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "prompt not found" });
+    return sendJsonWithEtag(req, reply, d, { etagPrefix: "prompt", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   app.get("/api/site/items/availability", siteHandler(async (req, reply) => {

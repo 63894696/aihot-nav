@@ -512,3 +512,71 @@ export interface SiteToolDetail extends SiteItemDetail {
 
 /** All issue keys keep numbering and calendars stable; closed daily months omit their titles. */
 export interface ReportNavigationEntry { key: string; title?: string | null; count?: number }
+
+// ---------------------------------------------------------------------------
+// W5-3 prompt column. Visitors-facing list of usable prompts collected from
+// public posts across the web, with their original-page comments surfaced as
+// user-feedback voices. See docs/features/prompts-collection.md.
+
+/** The five top-level buckets the prompt column filters by. */
+export type PromptCategory = "writing" | "painting" | "study" | "research" | "design";
+
+export const PROMPT_CATEGORIES: readonly PromptCategory[] = [
+  "writing",
+  "painting",
+  "study",
+  "research",
+  "design",
+] as const;
+
+export interface PromptCard {
+  id: string;
+  category: PromptCategory;
+  /** One-line summary of where the prompt can be applied (≤80 chars). */
+  useCase: string | null;
+  /** Prompt text body — short cards truncate; the detail page holds the full string. */
+  promptPreview: string;
+  language: string;
+  community: string;
+  sourceKind: PromptSourceKind;
+  originalUrl: string;
+  capturedAt: string;
+}
+
+/** Source-kind values seen by the prompt column. A subset of the wider SourceKind so we don't
+ * accidentally surface prompt rows tagged with kinds we don't understand. */
+export type PromptSourceKind = "manual" | "searxng_search" | "rss" | "external";
+
+export interface PromptComment {
+  id: string;
+  authorName: string | null;
+  body: string;
+  postedAt: string | null;
+}
+
+export interface PromptDetail extends PromptCard {
+  /** Full prompt text (not truncated). */
+  promptText: string;
+  originalPostId: string | null;
+  /** Comments from the original web page; empty when fetch failed. */
+  comments: PromptComment[];
+  /** 'ok' | 'failed' | 'timeout' — what happened the last time we tried to fetch comments. */
+  commentFetchStatus: "ok" | "failed" | "timeout";
+}
+
+export interface PromptsResponse {
+  filters: { category: PromptCategory | null };
+  items: PromptCard[];
+  nextCursor: string | null;
+  refreshAt: string | null;
+  windowDays: number;
+  generatedAt: string;
+}
+
+export interface PromptsQuery {
+  category?: PromptCategory | null;
+  cursor?: string | null;
+  windowDays?: number;
+  limit?: number;
+  now?: Date;
+}
