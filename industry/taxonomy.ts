@@ -9,9 +9,12 @@
  */
 export const CATEGORIES = [
   { key: "ai-models", label: "模型", section: "模型发布/更新", guide: "新模型、模型版本、权重开放、模型能力与价格变化的发布与评测结果" },
-  { key: "ai-products", label: "产品", section: "产品发布/更新", guide: "AI 产品、功能、应用、工具、API 与平台的发布和更新" },
-  { key: "industry", label: "行业", section: "行业动态", guide: "公司经营、融资并购、人事、合作、诉讼、监管与政策、市场与基础设施" },
+  { key: "ai-products", label: "产品", section: "产品发布/更新", guide: "AI 产品、功能、应用、平台与 API 的发布和更新" },
+  { key: "industry", label: "行业", section: "行业动态", guide: "公司经营、人事、合作、诉讼、市场与基础设施变化" },
+  { key: "funding", label: "融资", section: "行业动态", guide: "融资、估值、收购、并购、IPO 与资本运作" },
+  { key: "policy", label: "政策", section: "行业动态", guide: "监管、法规、政策、合规、政府指令与行业治理" },
   { key: "paper", label: "论文", section: "论文研究", guide: "研究论文、技术报告、基准与数据集" },
+  { key: "safety", label: "安全", section: "安全与对齐", guide: "安全、对齐、红队、越狱、滥用、伦理与负责任 AI" },
   { key: "tip", label: "教程", section: "技巧与观点", guide: "教程、实践经验、使用技巧、提示词与工具用法、深度技术讲解" },
   { key: "opinion", label: "观点", section: "技巧与观点", guide: "人物观点、评论、分析、访谈、现象与趋势讨论" },
 ] as const;

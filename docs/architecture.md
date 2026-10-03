@@ -47,7 +47,7 @@ flowchart LR
 | `packages/backend/src/notify/` | 飞书推送 |
 | `packages/backend/src/operations/` | 告警、备份、清理、IndexNow |
 | `packages/backend/src/admin/` | 后台接口 |
-| `packages/backend/src/leaderboard/`、`monitor/` | 模型榜、Codex 重置监控（见 [模型榜与 Codex 重置监控](leaderboard.md)） |
+| `packages/backend/src/leaderboard/` | 模型榜（见 [模型榜](leaderboard.md)） |
 | `apps/web/app/routes/` | 每个页面一个文件，`routes.ts` 是路由表 |
 | `database/migrations/` | 数据库迁移，按编号顺序执行 |
 | `scripts/` | 初始化、迁移、种子数据、评测、检查脚本 |
