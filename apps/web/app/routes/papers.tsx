@@ -13,6 +13,7 @@ import { AsideCard, ReadingLayout } from "../components/ui/Page";
 import { IconArrowRight, IconDoc } from "../components/icons";
 import { PaperCard } from "../features/papers/PaperCard";
 import { PaperFilters } from "../features/papers/PaperFilters";
+import { CommentarySourcesCard } from "../features/papers/CommentarySourcesCard";
 
 export function headers() {
   return { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" };
@@ -123,6 +124,8 @@ export default function PapersPage() {
               </p>
             </AsideCard>
           )}
+
+          <CommentarySourcesCard />
         </>
       }
     >

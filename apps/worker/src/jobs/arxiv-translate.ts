@@ -14,6 +14,7 @@ const TRANSLATE_PROMPT_VERSION = promptVersion("summarize-arxiv");
 const SYSTEM = promptText("summarize-arxiv");
 
 const TRANSLATE_LIMIT = 200;
+const CONCURRENCY = 8;
 const MAX_RETRIES = 3;
 
 const Output = z.object({
@@ -28,18 +29,29 @@ export interface TranslateResult {
   reason?: string;
 }
 
-export async function translateArxivPending(opts: { limit?: number; budgetMs?: number } = {}): Promise<TranslateResult[]> {
+export async function translateArxivPending(opts: { limit?: number; budgetMs?: number; concurrency?: number } = {}): Promise<TranslateResult[]> {
   const deadline = opts.budgetMs ? Date.now() + opts.budgetMs : Number.POSITIVE_INFINITY;
   const limit = opts.limit ?? TRANSLATE_LIMIT;
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? CONCURRENCY, 16));
   const rows = await sql<{ arxiv_id: string; title_en: string; abstract_en: string; authors: string[]; fail_count: number }[]>`
     SELECT arxiv_id, title_en, abstract_en, authors, fail_count FROM papers
     WHERE status IN ('fetched', 'partial', 'failed') AND fail_count < ${MAX_RETRIES}
-    ORDER BY published_at DESC LIMIT ${limit}`;
+    ORDER BY (CASE WHEN status = 'failed' THEN 1 ELSE 0 END), published_at DESC LIMIT ${limit}`;
   const model = await modelFor("translate");
   const results: TranslateResult[] = [];
-  for (const row of rows) {
+  // Translate in fixed-size batches so a long queue of LLM calls does not all burst at once.
+  // The schedule is singleton so two parallel runs cannot double-call the LLM on the same
+  // row; within a run, the per-row UPDATE marks the row 'translating' before the call, so a
+  // second worker picking up later rows cannot race into the same arxiv_id either.
+  for (let i = 0; i < rows.length; i += concurrency) {
     if (Date.now() > deadline) break;
-    results.push(await translateOne(row, model));
+    const batch = rows.slice(i, i + concurrency);
+    const batchResults = await Promise.all(batch.map((row) => translateOne(row, model).catch((error): TranslateResult => ({
+      arxivId: row.arxiv_id,
+      status: "failed",
+      reason: (error as Error).message.slice(0, 300),
+    }))));
+    results.push(...batchResults);
   }
   return results;
 }

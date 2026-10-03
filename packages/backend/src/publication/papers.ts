@@ -60,7 +60,10 @@ export async function loadPapers(q: PapersQuery = {}): Promise<PapersResponse> {
       ${categoryClause}
       ${tagClause}
       ${cursorClause}
-    ORDER BY p.published_at DESC, p.arxiv_id DESC
+    ORDER BY (CASE WHEN p.status = 'translated' THEN 0 ELSE 1 END),
+             COALESCE(p.hf_upvotes, 0) DESC,
+             p.published_at DESC,
+             p.arxiv_id DESC
     LIMIT ${limit + 1}`;
 
   const hasMore = rows.length > limit;

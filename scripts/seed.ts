@@ -14,7 +14,7 @@ import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 interface SeedSource {
   id: string;
   name: string;
-  kind: "rss" | "web_list" | "json_list" | "x_search" | "mp_account" | "external";
+  kind: "rss" | "web_list" | "json_list" | "x_search" | "mp_account" | "external" | "search_api";
   config: Record<string, unknown>;
   tier?: string;
   first_party?: boolean;
