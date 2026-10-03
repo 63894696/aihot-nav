@@ -21,6 +21,8 @@ const KEYS: Record<SourceRow["kind"], string[]> = {
   x_search: ["_aihot", "ingestNoiseFilter", "itemUrlPrefixRewrite", "query", "searchType"],
   mp_account: ["wxid", "ghid", "nickname"],
   external: [],
+  // The search-engine orchestrator reads `queryFile` from config; no per-source fetch URL.
+  search_api: ["queryFile"],
 };
 
 // Objects with fixed keys (headers and bodyJson are request data, free-form).

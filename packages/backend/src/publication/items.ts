@@ -1,10 +1,13 @@
 // Public read layer, item level. Every exit (site API, v1, RSS, MCP, sitemap) reads
 // items through these functions; visibility, release gate and body licences are applied here.
 import type { CategoryKey, ChannelKey } from "@aihot/contracts/taxonomy";
-import type { FeedItemSummary, ItemSummary, MediaView, SourceKind, XPostView } from "@aihot/contracts/site";
+import type { FeedItemSummary, ItemSummary, MediaView, SearchProvider, SourceKind, XPostView } from "@aihot/contracts/site";
 import { sql, type Db } from "../db.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { displayTags } from "./rules.ts";
+
+/** The only source whose rows carry searchMeta in `articles.raw`. */
+export const SEARCH_API_SOURCE_ID = "search-api-virtual";
 
 export interface ItemRow {
   id: string;
@@ -48,6 +51,11 @@ export interface ItemRow {
   zh_text: string | null;
   /** Chinese translation of the post an X post quotes. */
   quoted_zh: string | null;
+  /**
+   * articles.raw jsonb. Search-engine candidates (W5-2) store `{provider, queryId, queryText, ...}`
+   * here so the publication layer can surface the original query. Null for every other source.
+   */
+  article_raw: Record<string, any> | null;
 }
 
 /** Columns every item listing selects. Internal judgement details never leave this layer. */
@@ -56,16 +64,20 @@ export const ITEM_COLUMNS = sql`
   p.selected, p.eligible, p.channel, p.url, p.published_at, p.discovered_at, p.timeline_at, p.sort_at, p.first_party, p.visibility,
   p.body_mode, p.syndicate, p.indexable, p.visible_after, p.backfill, p.fact_id, p.story_id,
   s.id AS source_id, s.name AS source_name, s.kind AS source_kind, s.participation_mode AS source_mode, s.icon_url AS source_icon,
-  a.x_post, a.author, a.language,
+  a.x_post, a.author, a.language, a.raw AS article_raw,
   st.public_id::text AS story_public_id, st.title AS story_title,
   CASE WHEN p.channel = 'x' THEN tr.body_text END AS zh_text, qt.text_zh AS quoted_zh`;
 
-/** Public API listings never render article bodies, X media or story metadata. */
-export type ApiItemRow = Pick<ItemRow, "id" | "title" | "original_title" | "summary" | "source_name" | "url" | "published_at" | "discovered_at" | "category" | "score" | "selected" | "reason">;
+/**
+ * Public API listings never render article bodies, X media or story metadata. `article_raw` IS
+ * surfaced (just the searchMeta slice, see `toApiItemSummary`) so feed cards can show the search-
+ * engine badge without the full reader detail payload.
+ */
+export type ApiItemRow = Pick<ItemRow, "id" | "title" | "original_title" | "summary" | "source_name" | "url" | "published_at" | "discovered_at" | "category" | "score" | "selected" | "reason" | "source_id" | "source_kind" | "article_raw">;
 export const API_ITEM_COLUMNS = sql`
-  p.article_id AS id, p.title, p.original_title, p.summary, s.name AS source_name, p.url,
-  p.published_at, p.discovered_at, p.category, p.score, p.selected, p.reason`;
-export const API_ITEM_FROM = sql`FROM publications p JOIN sources s ON s.id = p.source_id`;
+  p.article_id AS id, p.title, p.original_title, p.summary, s.name AS source_name, s.id AS source_id, s.kind AS source_kind, p.url,
+  p.published_at, p.discovered_at, p.category, p.score, p.selected, p.reason, a.raw AS article_raw`;
+export const API_ITEM_FROM = sql`FROM publications p JOIN sources s ON s.id = p.source_id JOIN articles a ON a.id = p.article_id`;
 
 /** A translation of an older revision is left out: the original changed after it (the worker translates it again). */
 export const ITEM_FROM = sql`
@@ -152,6 +164,7 @@ export function xView(row: Pick<ItemRow, "x_post" | "zh_text"> & Partial<Pick<It
 
 export function toItemSummary(row: ItemRow): ItemSummary {
   const x = row.channel === "x" ? xView(row, true) : null;
+  const searchMeta = readSearchMeta(row);
   return {
     id: row.id,
     revision: row.revision,
@@ -166,6 +179,7 @@ export function toItemSummary(row: ItemRow): ItemSummary {
       firstParty: row.first_party,
       iconUrl: proxiedImage(row.source_icon, "avatar"),
       ...(proxiedImageSet(row.source_icon, "avatar") ? { iconSrcSet: proxiedImageSet(row.source_icon, "avatar")! } : {}),
+      searchProvider: searchMeta?.provider ?? null,
     },
     links: { aihot: `/items/${row.id}`, original: row.url },
     publishedAt: row.published_at?.toISOString() ?? null,
@@ -178,6 +192,7 @@ export function toItemSummary(row: ItemRow): ItemSummary {
     channel: row.channel,
     story: row.story_public_id ? { publicId: row.story_public_id, title: row.story_title ?? "" } : null,
     x,
+    searchMeta: searchMeta ? { provider: searchMeta.provider, queryId: searchMeta.queryId, queryText: searchMeta.queryText } : null,
   };
 }
 
@@ -186,14 +201,33 @@ export function toFeedItemSummary(row: ItemRow): FeedItemSummary {
   const item = toItemSummary(row);
   return {
     id: item.id, title: item.title, summary: item.summary, reason: item.reason,
-    source: { name: item.source.name }, publishedAt: item.publishedAt, timelineAt: item.timelineAt,
+    source: { name: item.source.name, searchProvider: item.source.searchProvider },
+    publishedAt: item.publishedAt, timelineAt: item.timelineAt,
     category: item.category, tags: item.tags, score: item.score, selected: item.selected, channel: item.channel,
     x: item.x ? {
       authorName: item.x.authorName, handle: item.x.handle, avatarUrl: item.x.avatarUrl,
       ...(item.x.avatarSrcSet ? { avatarSrcSet: item.x.avatarSrcSet } : {}), media: item.x.media,
       quoted: item.x.quoted ? { authorName: item.x.quoted.authorName, handle: item.x.quoted.handle, text: item.x.quoted.text, translation: item.x.quoted.translation } : null,
     } : null,
+    searchMeta: item.searchMeta,
   };
+}
+
+/**
+ * Read the search-engine metadata slice from articles.raw. Returns null for anything other than the
+ * search-api-virtual source or rows whose raw doesn't match the contract. An unknown provider string
+ * is treated as non-search (badge stays hidden, no exception) so the column can be widened later.
+ */
+export function readSearchMeta(row: { source_id: string; article_raw: Record<string, any> | null }): { provider: SearchProvider; queryId: string; queryText: string } | null {
+  if (row.source_id !== SEARCH_API_SOURCE_ID) return null;
+  const raw = row.article_raw;
+  if (!raw || typeof raw !== "object") return null;
+  const provider = raw.provider;
+  const queryId = raw.queryId;
+  const queryText = raw.queryText;
+  if (provider !== "searxng" && provider !== "hn_algolia" && provider !== "github_trending") return null;
+  if (typeof queryId !== "string" || typeof queryText !== "string") return null;
+  return { provider, queryId, queryText };
 }
 
 export async function fetchItemsByIds(ids: string[], db: Db = sql): Promise<Map<string, ItemRow>> {

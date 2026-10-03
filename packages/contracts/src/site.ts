@@ -4,6 +4,13 @@ import type { CategoryKey, ChannelKey } from "./taxonomy.ts";
 
 export type SourceKind = "rss" | "web_list" | "json_list" | "x_search" | "mp_account" | "external";
 
+/**
+ * Search-engine providers feed the search-api-virtual source (W5-2). null for every other source.
+ * The detail layer surfaces the original query text alongside the provider, so readers can verify
+ * why this URL was selected instead of trusting an opaque algorithm.
+ */
+export type SearchProvider = "searxng" | "hn_algolia" | "github_trending";
+
 export interface SourceRef {
   id: string;
   name: string;
@@ -11,6 +18,8 @@ export interface SourceRef {
   firstParty: boolean;
   iconUrl: string | null;
   iconSrcSet?: string;
+  /** Set only when this source is `search-api-virtual`; otherwise null. */
+  searchProvider: SearchProvider | null;
 }
 
 export interface MediaView {
@@ -61,11 +70,17 @@ export interface ItemSummary {
   channel: "news" | "x";
   story: StoryRef | null;
   x: XPostView | null;
+  /**
+   * Set only when this item's source is `search-api-virtual` (W5-2). Carries the original query that
+   * surfaced the URL, so readers can see why a search-engine result made it into the timeline.
+   * `queryId` is the row id from industry/search-queries.json — stable, never translated.
+   */
+  searchMeta: { provider: SearchProvider; queryId: string; queryText: string } | null;
 }
 
 /** The fields rendered by a site feed card; full original text lives in the item detail. */
-export interface FeedItemSummary extends Pick<ItemSummary, "id" | "title" | "summary" | "reason" | "publishedAt" | "timelineAt" | "category" | "tags" | "score" | "selected" | "channel"> {
-  source: Pick<SourceRef, "name">;
+export interface FeedItemSummary extends Pick<ItemSummary, "id" | "title" | "summary" | "reason" | "publishedAt" | "timelineAt" | "category" | "tags" | "score" | "selected" | "channel" | "searchMeta"> {
+  source: Pick<SourceRef, "name" | "searchProvider">;
   x: (Pick<XPostView, "authorName" | "handle" | "avatarUrl" | "avatarSrcSet" | "media"> & {
     quoted: Omit<NonNullable<XPostView["quoted"]>, "url"> | null;
   }) | null;

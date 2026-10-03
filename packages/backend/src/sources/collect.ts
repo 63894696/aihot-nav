@@ -89,6 +89,11 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
     // WeChat accounts are reconciled by the mp job; external sources only receive reports.
     return { sourceId, status: "skipped", found: 0, created: 0, revised: 0 };
   }
+  if (source.kind === "search_api") {
+    // The search-engine orchestrator (apps/worker/src/jobs/search-fetch.ts) drives this virtual
+    // source directly. The standard scheduler would not know which fetcher to call.
+    return { sourceId, status: "skipped", found: 0, created: 0, revised: 0 };
+  }
 
   const [run] = await sql<{ id: number }[]>`INSERT INTO fetch_runs (source_id) VALUES (${sourceId}) RETURNING id`;
   const firstImport = !source.cursor?.initializedAt;

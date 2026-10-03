@@ -64,7 +64,7 @@ export async function loadGroupReports(q: GroupReportsQuery, now = new Date()): 
         id: m.id,
         title: m.title,
         summary: m.summary,
-        source: { id: m.source_id, name: m.source_name, kind: m.source_kind as never, firstParty: m.first_party, iconUrl: proxiedImage(m.icon_url, "avatar") },
+        source: { id: m.source_id, name: m.source_name, kind: m.source_kind as never, firstParty: m.first_party, iconUrl: proxiedImage(m.icon_url, "avatar"), searchProvider: null },
         timelineAt: m.timeline_at.toISOString(),
         originalUrl: m.url,
         selected: m.selected,

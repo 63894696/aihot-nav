@@ -1,7 +1,6 @@
 // Cron-style schedules (Asia/Shanghai). Each run is recorded in job_runs; missed slots run once.
 import type { PgBoss } from "pg-boss";
 import { FEATURES } from "@aihot/industry/features";
-import { credential } from "@aihot/backend/config";
 import { ensureQueue, recordRun } from "@aihot/backend/jobs/queue";
 import { sweepUnprocessed } from "@aihot/backend/jobs/content";
 import { translatePending } from "@aihot/backend/editorial/translate";
@@ -15,7 +14,6 @@ import { catchUpReports, composeDaily, composeMonthly, composeWeekly } from "@ai
 import { addDays, beijingDate, isoWeekLabel } from "@aihot/contracts/time";
 import { runLeaderboardRound } from "@aihot/backend/leaderboard/method/run";
 import { refreshLeaderboard } from "@aihot/backend/leaderboard/fetch/refresh";
-import { monitorTick } from "@aihot/backend/monitor/scan";
 import { dailyRetention } from "@aihot/backend/operations/retention";
 import { submitIndexNow } from "@aihot/backend/operations/indexnow";
 import { checkAlerts, sendDigest } from "@aihot/backend/operations/alerts";
@@ -27,6 +25,8 @@ import { markStalePendingReceipts } from "@aihot/backend/providers/receipts";
 import { markStaleDeliveries } from "@aihot/backend/notify/deliver";
 import { fetchArxivFeeds } from "./jobs/arxiv-fetch.ts";
 import { translateArxivPending } from "./jobs/arxiv-translate.ts";
+import { syncHuggingFaceDaily } from "./jobs/papers-hf-sync.ts";
+import { fetchSearchQueries } from "./jobs/search-fetch.ts";
 
 interface Scheduled {
   name: string;
@@ -90,16 +90,18 @@ export const SCHEDULES: Scheduled[] = [
     : []),
   // Codex reset monitor: checked every minute, scanned every 5 (every 3 while hot). It reads X through
   // SocialData, so without that key there is nothing to run.
-  ...(collecting && FEATURES.codexResetMonitor && credential("collectors", "SOCIALDATA_API_KEY")
-    ? [
-        { name: "monitor.tick", cron: "* * * * *", run: () => monitorTick() },
-        { name: "monitor.lookback", cron: "40 4 * * *", run: () => monitorTick({ lookbackHours: 48 }) },
-      ]
-    : []),
   // W4b: arXiv paper fetch (5 topic RSS) and LLM translation of pending papers.
   // Translate runs singleton: two parallel runs would double-call the LLM on the same row.
   { name: "arxiv.fetch", cron: "*/20 * * * *", run: () => fetchArxivFeeds() },
-  { name: "arxiv.translate", cron: "*/5 * * * *", missed: "once", run: () => translateArxivPending() },
+  { name: "arxiv.translate", cron: "*/2 * * * *", missed: "once", run: () => translateArxivPending() },
+  // W4b-2: Hugging Face daily-papers → community upvotes / comments on existing papers.
+  // Once a day, normal schedule (no singleton needed: writes are idempotent, one paper per row).
+  { name: "papers.hf-sync", cron: "13 5 * * *", missed: "once", run: () => syncHuggingFaceDaily() },
+  // W5-2: zero-budget search-engine orchestrator. Reads industry/search-queries.json, fans out
+  // across SearXNG / HN Algolia / GitHub Trending, dedupes, and runs the LLM score gate (≥70).
+  // Singleton not required: the orchestrator's dedupe + identity_key on `articles` makes
+  // concurrent runs safe; the safety valve in scoreSearch handles a model outage.
+  { name: "search.fetch", cron: "0 * * * *", run: () => fetchSearchQueries() },
 ];
 
 export async function registerSchedules(boss: PgBoss) {

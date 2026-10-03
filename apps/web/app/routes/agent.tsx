@@ -150,12 +150,6 @@ function RssTab({ base }: { base: string }) {
 function ApiTab({ base }: { base: string }) {
   const endpoints: Array<[string, string]> = [
     ["/api/v1/items", "精选或最近 7 天公开动态；支持分类、时间和关键词"],
-    ...(FEATURES.codexResetMonitor
-      ? ([
-          ["/api/v1/codex-resets/recent", "Codex 重置监控（轮询用）：最近 7 天与尚未落地的预告"],
-          ["/api/v1/codex-resets", "Codex 重置与发卡的完整历史"],
-        ] as Array<[string, string]>)
-      : []),
     ["/api/v1/hot-topics", "当前热点榜与事件排名"],
     ["/api/v1/stories/{publicId}", "事件详情：报道时间线、综述与关联事件"],
     ["/api/v1/dailies", `${withSubject("日报")}日期索引`],

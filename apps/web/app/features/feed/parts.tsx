@@ -2,12 +2,13 @@
 import { useState } from "react";
 import type { FeedItemSummary, MediaView } from "@aihot/contracts/site";
 import { IconBookmark } from "../../components/icons";
+import { SearchBadge } from "../../components/ui/SearchBadge";
 import { SourceAvatar } from "../../components/ui/SourceAvatar";
 import { Lightbox } from "../../components/ui/Lightbox";
 import { toggleStar, useIsStarred } from "../../lib/local-state";
 
-/** "IT之家（RSS）" or, for X, avatar + display name + @handle. */
-export function SourceLine({ item, avatarSize = 16, className = "" }: { item: Pick<FeedItemSummary, "source" | "x" | "channel">; avatarSize?: number; className?: string }) {
+/** "IT之家（RSS）" or, for X, avatar + display name + @handle. Search-engine items get a provider chip. */
+export function SourceLine({ item, avatarSize = 16, className = "" }: { item: Pick<FeedItemSummary, "source" | "x" | "channel" | "searchMeta">; avatarSize?: number; className?: string }) {
   if (item.channel === "x" && item.x) {
     return (
       <span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
@@ -17,7 +18,13 @@ export function SourceLine({ item, avatarSize = 16, className = "" }: { item: Pi
       </span>
     );
   }
-  return <span className={`min-w-0 truncate ${className}`}>{item.source.name}</span>;
+  const provider = item.source.searchProvider ?? item.searchMeta?.provider ?? null;
+  return (
+    <span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+      <span className="min-w-0 truncate">{item.source.name}</span>
+      {provider && <SearchBadge provider={provider} className="hidden sm:inline-flex" />}
+    </span>
+  );
 }
 
 /** Up to four media thumbnails, kept small in lists (the detail page shows them larger). Videos are stills. */
