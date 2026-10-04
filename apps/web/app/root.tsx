@@ -22,6 +22,7 @@ export const links: Route.LinksFunction = () => [
   { rel: "apple-touch-icon", href: "/apple-icon.png" },
   { rel: "manifest", href: "/manifest.webmanifest" },
   { rel: "alternate", type: "application/rss+xml", title: `${SITE.name} — 精选`, href: "/feed.xml" },
+  { rel: "alternate", type: "application/rss+xml", title: `${SITE.name} — 提示词合集`, href: "/feed/prompts.xml" },
 ];
 
 interface SiteMeta {

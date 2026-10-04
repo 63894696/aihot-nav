@@ -6,4 +6,5 @@ export const siteUrl = (path: string): string => `${config.siteUrl}${path}`;
 export const itemUrl = (id: string): string => siteUrl(`/items/${id}`);
 export const storyUrl = (publicId: string): string => siteUrl(`/story/${publicId}`);
 export const dailyUrl = (date: string): string => siteUrl(`/daily/${date}`);
+export const promptUrl = (id: string | number): string => siteUrl(`/prompts/${id}`);
 export const storyApiUrl = (publicId: string): string => siteUrl(`/api/v1/stories/${publicId}`);

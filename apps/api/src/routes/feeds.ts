@@ -1,7 +1,7 @@
 // RSS routes. Unknown query parameters are accepted and never change content.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { RSS_CACHE_CONTROL } from "@aihot/contracts/http-policy";
-import { dailyFeed, isFeedCategory, itemFeed, type ItemFeedKind } from "@aihot/backend/publication/feeds";
+import { dailyFeed, isFeedCategory, itemFeed, promptFeed, type ItemFeedKind } from "@aihot/backend/publication/feeds";
 import { applyPublicHeaders, sendTextWithEtag } from "../http/respond.ts";
 
 async function sendFeed(req: FastifyRequest, reply: FastifyReply, xml: string) {
@@ -15,7 +15,7 @@ function feedError(reply: FastifyReply) {
 
 export function registerFeeds(app: FastifyInstance) {
   // A preflight gets 204 and the allowed methods; feeds send no CORS headers.
-  for (const url of ["/feed.xml", "/feed/full.xml", "/feed/all.xml", "/feed/daily.xml", "/feed/category/:file", "/feed/full/category/:file"]) {
+  for (const url of ["/feed.xml", "/feed/full.xml", "/feed/all.xml", "/feed/daily.xml", "/feed/prompts.xml", "/feed/category/:file", "/feed/full/category/:file"]) {
     app.options(url, async (_req, reply) => reply.code(204).header("Allow", "GET, HEAD, OPTIONS").send());
   }
   const item = (kind: ItemFeedKind) => async (req: FastifyRequest, reply: FastifyReply) => {
@@ -32,6 +32,14 @@ export function registerFeeds(app: FastifyInstance) {
   app.get("/feed/daily.xml", async (req, reply) => {
     try {
       return await sendFeed(req, reply, await dailyFeed());
+    } catch (error) {
+      req.log.error({ err: error }, "feed error");
+      return feedError(reply);
+    }
+  });
+  app.get("/feed/prompts.xml", async (req, reply) => {
+    try {
+      return await sendFeed(req, reply, await promptFeed());
     } catch (error) {
       req.log.error({ err: error }, "feed error");
       return feedError(reply);

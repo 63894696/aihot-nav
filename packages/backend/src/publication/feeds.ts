@@ -10,7 +10,8 @@ import { proxyBodyImages } from "../media/imgproxy.ts";
 import { reportHeadline, reportIndex } from "./reports.ts";
 import { textToHtml } from "../content/sanitize.ts";
 import { categoryCondition, listedCondition, selectedCondition, xView, type ItemRow } from "./items.ts";
-import { dailyUrl, itemUrl, siteUrl } from "./links.ts";
+import { dailyUrl, itemUrl, promptUrl, siteUrl } from "./links.ts";
+import { PROMPT_CATEGORIES } from "@aihot/contracts/site";
 
 interface FeedMeta {
   id: string;
@@ -171,6 +172,60 @@ export async function dailyFeed(): Promise<string> {
     </item>`;
   });
   return channel({ title: m.title, description: m.description, homePath: m.homePath, selfPath: m.path, ttl: m.pollHintMinutes }, items);
+}
+
+/** Same RFC-822 truncation discipline as dailyFeed: keep the preview short so the item fits a feed reader. */
+function promptPreview(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= 280 ? flat : `${flat.slice(0, 280)}…`;
+}
+
+const PROMPTS_PATH = "/feed/prompts.xml";
+const PROMPTS_TITLE = `${SITE.name} — 提示词合集`;
+const PROMPTS_DESCRIPTION = `${SITE.name} 提示词合集最近 50 条，按收录时间倒序；附原文出处与 ${SITE.name} 详情页。`;
+
+interface PromptFeedRow {
+  id: number;
+  prompt_text: string;
+  use_case: string | null;
+  community: string;
+  category: string;
+  captured_at: Date;
+}
+
+/**
+ * The prompts RSS: 50 most recent prompt_items by captured_at DESC, matching the column's
+ * default listing order. The row filter mirrors loadPrompts() / readPromptMeta: only rows whose
+ * category sits inside PROMPT_CATEGORIES (the 5-bucket taxonomy) and whose prompt_text is
+ * non-empty make it through. category is a varchar in the table, so the ANY(...) guard is the
+ * cheap-and-honest filter — the same call readers will see.
+ */
+export async function promptFeed(): Promise<string> {
+  const rows = await sql<PromptFeedRow[]>`
+    SELECT id, prompt_text, use_case, community, category, captured_at
+      FROM prompt_items
+      WHERE prompt_text IS NOT NULL AND length(prompt_text) > 0
+        AND category = ANY(${PROMPT_CATEGORIES}::text[])
+      ORDER BY captured_at DESC, id DESC
+      LIMIT 50`;
+  const items = rows.map((r) => {
+    const url = promptUrl(r.id);
+    const title = (r.use_case?.trim()) || r.prompt_text.slice(0, 80) || `${SITE.name} 提示词 #${r.id}`;
+    const description = [
+      r.use_case ? `<p><strong>用途</strong>：${escapeXml(r.use_case)}</p>` : "",
+      `<p>${escapeXml(promptPreview(r.prompt_text))}</p>`,
+      `<p>via ${escapeXml(r.community)} · <a href="${url}">${url}</a></p>`,
+    ].join("\n");
+    return `    <item>
+      <title>${cdata(title)}</title>
+      <link>${url}</link>
+      <description>${cdata(description)}</description>
+      <pubDate>${rfc822(r.captured_at)}</pubDate>
+      <guid isPermaLink="false">prompt-${r.id}</guid>
+      <author>${AUTHOR} (${escapeXml(r.community)})</author>
+    </item>`;
+  });
+  return channel({ title: PROMPTS_TITLE, description: PROMPTS_DESCRIPTION, homePath: "/prompts", selfPath: PROMPTS_PATH, ttl: 30 }, items);
 }
 
 export function isFeedCategory(v: string): v is PublicApiCategoryKey {

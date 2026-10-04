@@ -31,27 +31,49 @@ interface Entry {
   priority?: number;
 }
 
-async function build(): Promise<string> {
-  const entries: Entry[] = [];
-  const [latestItem] = await sql<{ t: Date | null }[]>`SELECT max(timeline_at) AS t FROM publications WHERE visibility = 'public' AND selected`;
-  const [latestDaily] = await sql<{ key: string | null; t: Date | null }[]>`SELECT max(key) AS key, max(generated_at) AS t FROM reports WHERE kind = 'daily'`;
-  const now = latestItem?.t ?? new Date();
-  entries.push(
+/**
+ * Pure: the fixed-entries block at the top of build(). Extracted so the /prompts entry shape can be
+ * pinned by tests/sitemap-prompts.test.ts without booting a DB connection. The dynamic blocks
+ * (reports, topics, stories, leaderboard detail, items) stay inside build().
+ */
+export function staticSitemapEntries(opts: { now: Date | null; latestDaily: Date | null; hasLeaderboard: boolean }): Entry[] {
+  const { now, latestDaily, hasLeaderboard } = opts;
+  const entries: Entry[] = [
     { loc: "/", lastmod: now, changefreq: "hourly", priority: 1 },
     { loc: "/all", lastmod: now, changefreq: "hourly", priority: 0.9 },
-    { loc: "/daily", lastmod: latestDaily?.t, changefreq: "daily", priority: 0.9 },
+    { loc: "/daily", lastmod: latestDaily, changefreq: "daily", priority: 0.9 },
     { loc: "/hot", lastmod: now, changefreq: "hourly", priority: 0.9 },
-    { loc: "/daily/archive", lastmod: latestDaily?.t, changefreq: "daily", priority: 0.7 },
+    { loc: "/daily/archive", lastmod: latestDaily, changefreq: "daily", priority: 0.7 },
     { loc: "/weekly", changefreq: "weekly", priority: 0.7 },
     { loc: "/monthly", changefreq: "monthly", priority: 0.6 },
     { loc: "/topics", changefreq: "daily", priority: 0.7 },
+    // The prompts column is a daily-cadence listing page with its own RSS channel — pin it the same
+    // way /all and /hot are pinned (priority 0.8 sits between /hot at 0.9 and /topics at 0.7).
+    { loc: "/prompts", lastmod: now, changefreq: "daily", priority: 0.8 },
     { loc: "/agent", lastmod: now, changefreq: "weekly", priority: 0.7 },
     { loc: "/about", changefreq: "monthly", priority: 0.5 },
     { loc: "/terms", changefreq: "monthly", priority: 0.4 },
     { loc: "/privacy", changefreq: "monthly", priority: 0.4 },
     { loc: "/releases", lastmod: now, changefreq: "weekly", priority: 0.5 },
     { loc: "/changelog", lastmod: now, changefreq: "hourly", priority: 0.6 },
-  );
+  ];
+  if (hasLeaderboard) {
+    entries.push(
+      { loc: "/leaderboard", changefreq: "daily", priority: 0.8 },
+      { loc: "/leaderboard/sources", changefreq: "weekly", priority: 0.5 },
+      { loc: "/leaderboard/rules", changefreq: "monthly", priority: 0.4 },
+    );
+    for (const board of ["coding", "reasoning", "knowledge", "professional"]) entries.push({ loc: `/leaderboard/category/${board}`, changefreq: "daily", priority: 0.6 });
+  }
+  return entries;
+}
+
+async function build(): Promise<string> {
+  const entries: Entry[] = [];
+  const [latestItem] = await sql<{ t: Date | null }[]>`SELECT max(timeline_at) AS t FROM publications WHERE visibility = 'public' AND selected`;
+  const [latestDaily] = await sql<{ key: string | null; t: Date | null }[]>`SELECT max(key) AS key, max(generated_at) AS t FROM reports WHERE kind = 'daily'`;
+  const now = latestItem?.t ?? new Date();
+  entries.push(...staticSitemapEntries({ now, latestDaily: latestDaily?.t, hasLeaderboard: FEATURES.leaderboard }));
   if (FEATURES.leaderboard) {
     entries.push(
       { loc: "/leaderboard", changefreq: "daily", priority: 0.8 },
@@ -80,6 +102,15 @@ async function build(): Promise<string> {
   const items = await sql<{ id: string; t: Date }[]>`
     SELECT article_id AS id, updated_at AS t FROM publications WHERE visibility = 'public' AND indexable ORDER BY timeline_at DESC LIMIT ${MAX_URLS - entries.length}`;
   for (const it of items) entries.push({ loc: `/items/${it.id}`, lastmod: it.t, changefreq: "monthly", priority: 0.5 });
+  // Per-prompt detail pages (mirrors the items block above): readers reach each prompt's URL via
+  // the RSS feed or the listing page, but crawlers find them through this block. Capped by the
+  // remaining budget so we never overflow MAX_URLS.
+  const promptRows = await sql<{ id: number; t: Date }[]>`
+    SELECT id, updated_at AS t FROM prompt_items
+      WHERE prompt_text IS NOT NULL AND length(prompt_text) > 0
+        AND category = ANY(ARRAY['writing','coding','image','video','audio','agent','research']::text[])
+      ORDER BY captured_at DESC, id DESC LIMIT ${Math.max(0, MAX_URLS - entries.length)}`;
+  for (const p of promptRows) entries.push({ loc: `/prompts/${p.id}`, lastmod: p.t, changefreq: "weekly", priority: 0.4 });
 
   const body = entries
     .slice(0, MAX_URLS)
