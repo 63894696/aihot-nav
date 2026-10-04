@@ -493,6 +493,151 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "community-prompt-prompthero",
+      "name": "PromptHero",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 4320,
+      "tags": [
+        "提示词",
+        "提示词平台",
+        "writing",
+        "image",
+        "design"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "community-prompt-flowgpt",
+      "name": "FlowGPT",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 4320,
+      "tags": [
+        "提示词",
+        "提示词平台",
+        "writing",
+        "study",
+        "research"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "community-awesome-chatgpt-prompts",
+      "name": "awesome-chatgpt-prompts",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 4320,
+      "tags": [
+        "提示词",
+        "awesome-list",
+        "GitHub",
+        "writing",
+        "study",
+        "research"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "community-awesome-prompt-engineering",
+      "name": "awesome-prompt-engineering",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 4320,
+      "tags": [
+        "提示词",
+        "awesome-list",
+        "GitHub",
+        "research",
+        "design"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "community-prompt-reddit-chatgpt",
+      "name": "Reddit · r/ChatGPT",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 4320,
+      "tags": [
+        "提示词",
+        "Reddit",
+        "社区",
+        "writing",
+        "study"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "community-prompt-reddit-claudeai",
+      "name": "Reddit · r/ClaudeAI",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 4320,
+      "tags": [
+        "提示词",
+        "Reddit",
+        "社区",
+        "research",
+        "design"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "community-prompt-searxng-backfill",
+      "name": "SearXNG prompt backfill",
+      "kind": "search_api",
+      "config": {
+        "queryFile": "industry/search-queries.json"
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 60,
+      "tags": [
+        "提示词",
+        "社区",
+        "writing",
+        "image",
+        "study",
+        "research",
+        "design"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
     }
   ]
 }
