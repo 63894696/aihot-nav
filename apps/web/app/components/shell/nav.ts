@@ -3,7 +3,7 @@ import { withSubject } from "@aihot/industry/site";
 import { FEATURES } from "@aihot/industry/features";
 import type { ReactNode } from "react";
 import {
-  IconApps, IconBolt, IconBookmark, IconChart, IconClock, IconDoc, IconFlame, IconGrid, IconHeart, IconHistory, IconList, IconMessage, IconPlug,
+  IconApps, IconBolt, IconBookmark, IconChart, IconClock, IconDoc, IconFlame, IconGrid, IconHeart, IconHistory, IconList, IconMessage, IconPlug, IconPrompt,
 } from "../icons";
 
 export interface NavItem {
@@ -23,6 +23,7 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
       { to: "/", label: "精选", icon: IconBolt, end: true },
       { to: "/new", label: "每日新品", icon: IconDoc },
       { to: "/tools", label: withSubject("工具导航"), icon: IconGrid },
+      { to: "/prompts", label: "提示词合集", icon: IconPrompt },
       { to: "/all", label: `全部${withSubject("动态")}`, icon: IconList },
       { to: "/hot", label: "热点榜", icon: IconFlame },
       { to: "/daily", label: withSubject("日报"), icon: IconDoc },
@@ -49,7 +50,6 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
       { to: "/releases", label: "更新日志", icon: IconHistory, releasesDot: true },
       { to: "/changelog", label: "工具动态", icon: IconClock },
       { to: "/papers", label: "论文解读", icon: IconDoc },
-      { to: "/prompts", label: "提示词合集", icon: IconDoc },
       { to: "/feedback", label: "反馈", icon: IconMessage },
     ],
   },

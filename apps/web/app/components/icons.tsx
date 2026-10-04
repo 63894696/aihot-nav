@@ -47,3 +47,7 @@ export const IconTrendDown = (p: P) => (<Svg {...p}><path d="M3 7l6 6 4-4 8 8" /
 export const IconMinus = (p: P) => (<Svg {...p}><path d="M5 12h14" /></Svg>);
 export const IconCheck = (p: P) => (<Svg {...p}><path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>);
 export const IconCopy = (p: P) => (<Svg {...p}><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3" /></Svg>);
+// Prompt template — speech bubble with a spark-asterisk. Visually distinct
+// from IconDoc (which /papers uses) so the sidebar reader sees two different
+// columns side by side. Sized to match the rest of the 24×24 stroke icons.
+export const IconPrompt = (p: P) => (<Svg {...p}><path d="M4 5h16v11H9l-5 4z" /><path d="M9 9.5l1.6 1.6M12 8.5v2.5M14.4 9.5l-1.6 1.6M14.4 13.5l-1.6-1.6M9.6 13.5l1.6-1.6" /></Svg>);
