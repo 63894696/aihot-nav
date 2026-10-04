@@ -27,6 +27,7 @@ import { fetchArxivFeeds } from "./jobs/arxiv-fetch.ts";
 import { translateArxivPending } from "./jobs/arxiv-translate.ts";
 import { syncHuggingFaceDaily } from "./jobs/papers-hf-sync.ts";
 import { fetchSearchQueries } from "./jobs/search-fetch.ts";
+import { fetchPromptQueries } from "./jobs/prompt-fetch.ts";
 
 interface Scheduled {
   name: string;
@@ -102,6 +103,13 @@ export const SCHEDULES: Scheduled[] = [
   // Singleton not required: the orchestrator's dedupe + identity_key on `articles` makes
   // concurrent runs safe; the safety valve in scoreSearch handles a model outage.
   { name: "search.fetch", cron: "0 * * * *", run: () => fetchSearchQueries() },
+  // W5-3 v0.2.1-#7: prompts column orchestrator. Reads prompt-* queries from the same file,
+  // fans out across SearXNG (only — HN / GitHub Trending don't surface reusable prompts),
+  // dedupes, and runs the LLM prompt-score gate (extract {promptText, useCase, category}).
+  // Writes pass the prompt_items UNIQUE(original_url) gate via ON CONFLICT DO NOTHING, so a
+  // re-run is idempotent. Singleton not required for the same reason as search.fetch. The 5-min
+  // offset from search.fetch keeps the two score batches from colliding on the model at :00.
+  { name: "prompts.fetch", cron: "5 * * * *", run: () => fetchPromptQueries() },
 ];
 
 export async function registerSchedules(boss: PgBoss) {

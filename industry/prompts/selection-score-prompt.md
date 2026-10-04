@@ -27,7 +27,7 @@
 2. `useCase`:一句话(<= 80 字)说明适用场景,告诉访客「这个提示词解决什么」。从材料里抽原话或近义概括,不要扩展、不要营销话术、不要解释模板原理。
 3. `category`:从以下 5 类中选择最贴近的一类(精确匹配字符串,不能写自由文本):
    - `writing`(写作:文案 / 文章 / 邮件 / 剧本 / 故事 / 翻译润色 等)
-   - `painting`(绘画:Stable Diffusion / Midjourney / DALL-E / Sora 视觉提示词 等)
+   - `image`(图像:Stable Diffusion / Midjourney / DALL-E / Sora 视觉提示词 等)
    - `study`(学习:讲解 / 记忆 / 出题 / 复习 / 教学辅助 等)
    - `research`(调研:信息整理 / 比较 / 摘要 / 行业分析 / 用户访谈 等)
    - `design`(设计:UI / UX / Logo / 配色 / 排版 / 信息架构 等)

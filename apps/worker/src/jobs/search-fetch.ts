@@ -70,7 +70,7 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
     return { queries: 0, fetched: 0, deduped: 0, scored: 0, passed: 0, skipped_model: 0, upserted: 0, providers: {} };
   }
 
-  const queries = loadQueries();
+  const queries = loadQueries("search");
   const cursor = (src.cursor as { searxng?: SearxngCursor } | null)?.searxng ?? null;
   let nextSearxngCursor: SearxngCursor = cursor ?? { cursor: 0, recentlyFailed: [] };
 
@@ -168,9 +168,13 @@ async function loadVirtualSource(): Promise<SourceRow | null> {
   return row ?? null;
 }
 
-function loadQueries(): QueryFile["queries"] {
+function loadQueries(prefix: "search" | "prompt"): QueryFile["queries"] {
   const file = JSON.parse(readFileSync(path.join(REPO_ROOT, "industry/search-queries.json"), "utf8")) as QueryFile;
-  return Array.isArray(file.queries) ? file.queries : [];
+  if (!Array.isArray(file.queries)) return [];
+  // The query file carries two parallel sets: search-* (articles, this orchestrator) and
+  // prompt-* (prompts, prompt-fetch.ts). Each consumer scopes its own set by id prefix so the
+  // two pipelines never accidentally feed each other.
+  return file.queries.filter((q) => typeof q.id === "string" && q.id.startsWith(`${prefix}-`));
 }
 
 function mergeDeduped(batch: Candidate[], seen: Set<string>, out: Candidate[]): void {
