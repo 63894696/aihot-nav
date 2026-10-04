@@ -24,7 +24,8 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
       { to: "/new", label: "每日新品", icon: IconDoc },
       { to: "/tools", label: withSubject("工具导航"), icon: IconGrid },
       { to: "/prompts", label: "提示词合集", icon: IconPrompt },
-      { to: "/all", label: `全部${withSubject("动态")}`, icon: IconList },
+      { to: "/papers", label: "论文解读", icon: IconDoc },
+      { to: "/all", label: "交叉发现", icon: IconList },
       { to: "/hot", label: "热点榜", icon: IconFlame },
       { to: "/daily", label: withSubject("日报"), icon: IconDoc },
       { to: "/topics", label: "主题", icon: IconGrid },
@@ -49,7 +50,6 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
       { to: "/about", label: "关于", icon: IconHeart },
       { to: "/releases", label: "更新日志", icon: IconHistory, releasesDot: true },
       { to: "/changelog", label: "工具动态", icon: IconClock },
-      { to: "/papers", label: "论文解读", icon: IconDoc },
       { to: "/feedback", label: "反馈", icon: IconMessage },
     ],
   },
@@ -58,7 +58,7 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
 export const TABBAR: NavItem[] = [
   { to: "/", label: "精选", icon: IconBolt, end: true },
   { to: "/tools", label: withSubject("工具"), icon: IconGrid },
-  { to: "/all", label: "全部", icon: IconList },
+  { to: "/all", label: "交叉", icon: IconList },
   { to: "/more", label: "更多", icon: IconApps, releasesDot: true },
 ];
 

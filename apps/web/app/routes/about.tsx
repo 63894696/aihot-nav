@@ -107,10 +107,10 @@ function stagesOf(stats: SiteStats | null): Stage[] {
     },
     {
       no: "04",
-      title: "成刊",
+      title: "三轴呈现",
       figure: stats && <Figure n={stats.dailies} unit="期日报" />,
       text: ABOUT.steps.publish,
-      note: "也可以用 RSS、API、MCP 订阅",
+      note: "工具 · 提示词 · 论文 — RSS / API / MCP 都能订阅",
     },
   ];
 }

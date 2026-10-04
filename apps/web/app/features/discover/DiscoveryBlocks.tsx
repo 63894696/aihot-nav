@@ -30,7 +30,7 @@ export function DiscoveryBlocks({ data }: Props) {
   const allEmpty = data.tools.empty && data.papers.empty && data.prompts.empty;
   if (allEmpty && !data.category) return null;
 
-  const headerLabel = data.categoryLabel ? `${data.categoryLabel} · 三栏速览` : "三栏速览";
+  const headerLabel = data.categoryLabel ? `${data.categoryLabel} · 工具·提示词·论文 三栏速览` : "工具·提示词·论文 三栏速览";
   return (
     <section aria-labelledby="discover-heading" className="mt-5 lg:mt-7">
       <div className="mb-3 flex items-baseline justify-between gap-3">
