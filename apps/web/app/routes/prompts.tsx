@@ -22,7 +22,12 @@ export function headers() {
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const params = new URLSearchParams();
-  const category = url.searchParams.get("category");
+  // v0.2.0 → v0.2.1 URL compat: collapse legacy category buckets before the loader hits the API.
+  // The publication layer (readPromptMeta in packages/backend/src/publication/prompts.ts) drops
+  // any row whose category is not in PROMPT_CATEGORIES, so a bookmarked ?category=painting URL
+  // would silently return empty without this seam. Mirrors the v0.2.1-#1 redirect strategy.
+  const rawCategory = url.searchParams.get("category");
+  const category = compatCategory(rawCategory);
   if (category) params.set("category", category);
   const windowDays = url.searchParams.get("windowDays");
   if (windowDays) params.set("windowDays", windowDays);
@@ -32,6 +37,13 @@ export async function loader({ request }: { request: Request }) {
   const path = `/api/site/prompts${qs ? `?${qs}` : ""}`;
   const data = await apiGet<PromptsResponse>(path, { signal: request.signal });
   return data;
+}
+
+/** Collapses the v0.2.0 "painting" / "design" buckets into the v0.2.1 "image" capability. */
+function compatCategory(raw: string | null | undefined): string | null {
+  if (raw == null || raw === "") return null;
+  if (raw === "painting" || raw === "design") return "image";
+  return raw;
 }
 
 export function meta() {

@@ -20,12 +20,21 @@ export type PromptCardData = {
   capturedAt: string;
 };
 
+// Map is intentionally narrow: the publication layer's readPromptMeta gate only lets through
+// PromptCategory keys (PROMPT_CATEGORIES in @aihot/contracts/site). Anything outside this set
+// would have been dropped at /api/site/prompts, so the wire never carries "painting" / "design"
+// — the v0.2.0 → v0.2.1 migration 0043 collapsed those into "image" at the DB layer.
 const CATEGORY_LABEL: Record<string, string> = {
   writing: "写作",
-  painting: "绘画",
-  study: "学习",
+  coding: "编程",
+  image: "图像",
+  video: "视频",
+  audio: "音频",
+  agent: "智能体",
+  data: "数据",
   research: "研究",
-  design: "设计",
+  study: "学习",
+  other: "其他",
 };
 
 const SOURCE_KIND_LABEL: Record<string, string> = {
