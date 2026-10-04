@@ -1,17 +1,15 @@
 // Category chips + window filter for /prompts (W5-3). Mirrors /papers's filter row shape so the
-// two columns feel consistent. The category chip group uses the 5-bucket taxonomy from the
-// publication layer (writing / painting / study / research / design); the window chips reuse the
-// 7/30/90 day pattern.
+// two columns feel consistent. The category chip group uses the 10-bucket taxonomy from the
+// publication layer (writing / coding / image / video / audio / agent / data / research / study /
+// other) — capability-axis so a prompt card and a tool card can share the same key on the detail
+// page. The window chips reuse the 7/30/90 day pattern.
 
 import { Link, useSearchParams } from "react-router";
+import { PROMPT_CATEGORIES, PROMPT_CATEGORY_LABELS } from "@aihot/contracts/site";
 
 const CATEGORIES = [
   { value: null, label: "全部" },
-  { value: "writing", label: "写作" },
-  { value: "painting", label: "绘画" },
-  { value: "study", label: "学习" },
-  { value: "research", label: "研究" },
-  { value: "design", label: "设计" },
+  ...PROMPT_CATEGORIES.map((k) => ({ value: k, label: PROMPT_CATEGORY_LABELS[k] })),
 ] as const;
 
 const WINDOWS = [

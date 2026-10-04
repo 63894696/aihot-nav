@@ -2,7 +2,7 @@
 // post link, and the original-page comments rendered as a quiet thread. No model call here —
 // readers opening a card get cached prompt text + a short list of comments.
 import { SITE } from "@aihot/industry/site";
-import type { PromptDetail } from "@aihot/contracts/site";
+import { PROMPT_CATEGORY_LABELS, type PromptDetail } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/prompts.$id";
 import { useState } from "react";
@@ -51,13 +51,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   });
 }
 
-const CATEGORY_LABEL: Record<string, string> = {
-  writing: "写作",
-  painting: "绘画",
-  study: "学习",
-  research: "研究",
-  design: "设计",
-};
+const CATEGORY_LABEL: Record<string, string> = PROMPT_CATEGORY_LABELS;
 
 const FETCH_STATUS_LABEL: Record<PromptDetail["commentFetchStatus"], string> = {
   ok: "评论已收录",

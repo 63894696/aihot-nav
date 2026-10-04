@@ -49,3 +49,40 @@ export const LEADERBOARD_BOARD_LABELS: Record<LeaderboardBoardKey, string> = {
 export const ARTICLE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,80}$/;
 
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Legacy category keys (v0.2.0 事件型 9 类) → v0.2.1 能力型分类映射。
+ *
+ * `/all?category=ai-models` 这种老 URL 已经在用,改 key 必须走 URL 兼容层:route loader 收到老 key 时
+ * 返回 301 重定向到新 key 对应 URL(详见 apps/web/app/lib/categoryCompat.ts)。
+ *
+ * 备注:这是**计划**的映射,真正生效要等 commit #2 扩 industry/taxonomy.ts 引入新能力型 keys;这里
+ * 提前定义好 contract,让 admin / RSS / sitemap 那边改的时候能引用同一份表,不会出现"两个老 key 字典"。
+ */
+export const LEGACY_CATEGORY_REDIRECT: Readonly<Record<string, string>> = {
+  "ai-models": "research",
+  "ai-products": "other",
+  "industry": "other",
+  "funding": "other",
+  "policy": "other",
+  "paper": "research",
+  "safety": "other",
+  "tip": "writing",
+  "opinion": "writing",
+};
+
+/** True when `value` is one of the legacy 9 keys that needs a 301 redirect. */
+export function isLegacyCategoryKey(value: unknown): value is keyof typeof LEGACY_CATEGORY_REDIRECT {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(LEGACY_CATEGORY_REDIRECT, value);
+}
+
+/**
+ * Resolve an incoming category param: legacy key → mapped new key; unknown → null (caller should 301
+ * or 400 depending on context). Pure: no DB / no fetch.
+ */
+export function resolveCategoryKey(value: unknown): string | null {
+  if (typeof value !== "string" || value === "") return null;
+  if (isLegacyCategoryKey(value)) return LEGACY_CATEGORY_REDIRECT[value];
+  if (isCategoryKey(value)) return value;
+  return null;
+}

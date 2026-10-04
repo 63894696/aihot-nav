@@ -518,16 +518,66 @@ export interface ReportNavigationEntry { key: string; title?: string | null; cou
 // public posts across the web, with their original-page comments surfaced as
 // user-feedback voices. See docs/features/prompts-collection.md.
 
-/** The five top-level buckets the prompt column filters by. */
-export type PromptCategory = "writing" | "painting" | "study" | "research" | "design";
+/**
+ * Top-level buckets the prompt column filters by. Capability-axis (writing / coding / image / video
+ * / audio / agent / data / research / study / other) so a prompt card and a tool card can share the
+ * same key on the detail page. Legacy `painting` is gone (folded into `image`) and `design` is gone
+ * (folded into `image` and `other`); see migrations/XXXX_prompt_painting_to_image.sql for the row
+ * rewrite. Adding a key here also requires an editorial-prompt update so the worker keeps tagging
+ * rows into the new bucket.
+ */
+export type PromptCategory =
+  | "writing"
+  | "coding"
+  | "image"
+  | "video"
+  | "audio"
+  | "agent"
+  | "data"
+  | "research"
+  | "study"
+  | "other";
 
 export const PROMPT_CATEGORIES: readonly PromptCategory[] = [
   "writing",
-  "painting",
-  "study",
+  "coding",
+  "image",
+  "video",
+  "audio",
+  "agent",
+  "data",
   "research",
-  "design",
+  "study",
+  "other",
 ] as const;
+
+/** Display labels for each bucket. Used by the chip row, the detail page and the admin editor. */
+export const PROMPT_CATEGORY_LABELS: Record<PromptCategory, string> = {
+  writing: "写作",
+  coding: "编程",
+  image: "图像",
+  video: "视频",
+  audio: "音频",
+  agent: "Agent",
+  data: "数据",
+  research: "调研",
+  study: "学习",
+  other: "其他",
+};
+
+/** One-line guide for the worker and the admin dropdown: how to bucket borderline rows. */
+export const PROMPT_CATEGORY_GUIDES: Record<PromptCategory, string> = {
+  writing: "改写、扩写、润色、营销文案、长文、翻译",
+  coding: "代码生成、review、debug、refactor、test",
+  image: "SD/MJ/DALL-E 风格、negative prompt、camera/lighting(legacy `painting` rows remap here)",
+  video: "文生视频 / 图生视频 / 镜头控制 / 视频编辑 prompt",
+  audio: "TTS / 音乐生成 / 声音克隆 / 播客编辑",
+  agent: "工具调用、多步任务、planning、reflection",
+  data: "SQL/Pandas、可视化、ETL、数据清洗",
+  research: "市场分析、竞品、用户访谈、文献综述",
+  study: "tutor、知识图谱、记忆卡片(legacy `design` rows related to study go here)",
+  other: "兜底",
+};
 
 export interface PromptCard {
   id: string;
