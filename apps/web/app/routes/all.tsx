@@ -1,7 +1,7 @@
 import { SITE, withSubject } from "@aihot/industry/site";
 import { Link, redirect, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import type { Route } from "./+types/all";
-import type { PoolResponse } from "@aihot/contracts/site";
+import type { DiscoverResponse, PoolResponse } from "@aihot/contracts/site";
 import { isCategoryKey, isChannelKey } from "@aihot/contracts/taxonomy";
 import { loadOr404, queryString } from "../lib/api.server";
 import { legacyCategoryRedirect } from "../lib/categoryCompat";
@@ -9,6 +9,7 @@ import { listPath, pageMeta } from "../lib/seo";
 import { CategoryTabs, SearchField } from "../features/feed/Filters";
 import { PillTabs } from "../components/ui/Tabs";
 import { DayList, Pagination } from "../features/feed/DayList";
+import { DiscoveryBlocks } from "../features/discover/DiscoveryBlocks";
 import { EmptyState } from "../components/ui/Page";
 import { RingMark } from "../components/Logo";
 
@@ -25,11 +26,21 @@ export async function loader({ request }: Route.LoaderArgs) {
   const tab = url.searchParams.get("tab") === "relevance" ? "relevance" : null;
   // Legacy deep-paging parameters (deep, anchorAt) still open a normal page.
   const page = Math.min(Math.max(Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1, 1), 50);
-  const data = await loadOr404<PoolResponse>(
-    `/api/site/pool${queryString({ channel: channel === "all" ? null : channel, category, tag, q, tab, page: page > 1 ? page : null })}`,
-    { signal: request.signal, busyRedirect: "/all/search-busy" },
-  );
-  return { data };
+  // v0.2.1-#6 — side-by-side teaser of tools / papers / prompts above the main feed. We pass
+  // the raw category string through (not the validated `category` variable) so the discover wire
+  // can route to its own axis resolver; an unknown key falls through to empty blocks instead of
+  // blanking the page. Best-effort: a 5xx on the discover endpoint must NOT fail the main feed.
+  const discoverCategory = categoryParam?.trim() ? categoryParam.trim().slice(0, 60) : null;
+  const [data, discover] = await Promise.all([
+    loadOr404<PoolResponse>(
+      `/api/site/pool${queryString({ channel: channel === "all" ? null : channel, category, tag, q, tab, page: page > 1 ? page : null })}`,
+      { signal: request.signal, busyRedirect: "/all/search-busy" },
+    ),
+    fetch(`${url.origin}/api/site/discover${queryString({ category: discoverCategory })}`, { signal: request.signal })
+      .then(async (r) => (r.ok ? ((await r.json()) as DiscoverResponse) : null))
+      .catch(() => null),
+  ]);
+  return { data, discover };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -60,7 +71,7 @@ function pageHref(params: URLSearchParams, page: number) {
 }
 
 export default function AllPage() {
-  const { data } = useLoaderData<typeof loader>();
+  const { data, discover } = useLoaderData<typeof loader>();
   const [params] = useSearchParams();
   const navigation = useNavigation();
   const f = data.filters;
@@ -117,6 +128,11 @@ export default function AllPage() {
           </span>
         </div>
       )}
+
+      {/* v0.2.1-#6 — three-block discovery teaser. Renders above the main feed when the discover
+          endpoint returned a usable payload and at least one block has content. Suppressed
+          during search (`f.q`) to avoid distracting from the result list. */}
+      {!f.q && discover && <DiscoveryBlocks data={discover} />}
 
       <div className={`transition-opacity duration-200 ${busy ? "opacity-50" : ""}`}>
         {data.items.length === 0 ? (

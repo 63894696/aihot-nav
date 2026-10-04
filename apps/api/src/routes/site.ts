@@ -11,6 +11,7 @@ import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
 import { loadPapers, loadPaperDetail, loadPaperSiblings } from "@aihot/backend/publication/papers";
 import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
+import { loadDiscover } from "@aihot/backend/publication/discover";
 import { PROMPT_CATEGORIES, type PromptCategory } from "@aihot/contracts/site";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
@@ -138,6 +139,19 @@ export function registerSite(app: FastifyInstance) {
     const data = await loadPool({ ...filters, q: search, tab, page });
     const { generatedAt: _, ...content } = data;
     return sendJsonWithEtag(req, reply, data, { etagPrefix: "pool", cacheControl: "public, max-age=60, s-maxage=60", etagOf: content });
+  }));
+
+  // v0.2.1-#6 — three-block cross-axis discovery slice for /all's side-by-side teaser. The
+  // category filter is intentionally NOT routed through parseFilters: that helper only accepts
+  // CATEGORY_KEYS, but the discover view needs to route any axis category (capability /
+  // arXiv primary / prompt capability). loadDiscover validates + assigns per-block and silently
+  // drops unknown keys rather than 4xx'ing the whole page.
+  app.get("/api/site/discover", siteHandler(async (req, reply) => {
+    const q = looseQuery(req);
+    const category = q.category?.trim() ? q.category.trim().slice(0, 60) : null;
+    const data = await loadDiscover({ category });
+    const { generatedAt: _, ...content } = data;
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "discover", cacheControl: "public, max-age=60, s-maxage=60", etagOf: content });
   }));
 
   app.get("/api/site/items/:id", siteHandler(async (req, reply) => {

@@ -623,6 +623,41 @@ export interface PromptsResponse {
   generatedAt: string;
 }
 
+/**
+ * v0.2.1-#6 — three-block cross-axis discovery view surfaced on /all. One HTTP call returns a
+ * narrow slice of each column so the page can render tools / papers / prompts side-by-side with
+ * a category chip that filters all three. The server picks each block's items with the same
+ * filter logic its dedicated route uses (loadTools / loadPapers / loadPrompts); the contract is
+ * only a slice, never the whole feed.
+ *
+ * `appliedCategory` is the v0.2.1 capability key actually used in each block — the categories
+ * are disjoint by axis (CATEGORY_KEYS only on tools, ARXIV_PRIMARY only on papers, PROMPT_CATEGORIES
+ * only on prompts), so when the user lands on /all?category=writing the tools block carries
+ * `appliedCategory: null` and the UI quietly skips the chip there. Pinning the per-block shape
+ * is what keeps the wire honest about cross-axis coverage.
+ */
+export interface DiscoverBlock<T> {
+  items: T[];
+  /** Echoed back so the UI can show the column heading ("writing · 12 条") without refetching. */
+  appliedCategory: string | null;
+  /** The route path that lists this block's full feed with the same category — "查看全部 →" target. */
+  fullPath: string;
+  /** True when the block is empty because the axis has no data for this filter, not because the
+   *  underlying column is broken. The UI uses this to render "暂无相关提示词" instead of an error. */
+  empty: boolean;
+}
+
+export interface DiscoverResponse {
+  /** Echoed back unchanged. Lets the UI render the same chip the rest of /all already shows. */
+  category: string | null;
+  /** Truncated label for the chip ("写作 · 查看全部 → /prompts?category=writing"). */
+  categoryLabel: string | null;
+  tools: DiscoverBlock<FeedItemSummary>;
+  papers: DiscoverBlock<PaperSummary>;
+  prompts: DiscoverBlock<PromptCard>;
+  generatedAt: string;
+}
+
 export interface PromptsQuery {
   category?: PromptCategory | null;
   cursor?: string | null;
