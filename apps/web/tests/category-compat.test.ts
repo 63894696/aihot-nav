@@ -19,8 +19,8 @@ test("LEGACY_CATEGORY_REDIRECT covers all 9 v0.2.0 event-type keys", () => {
 test("isLegacyCategoryKey returns true only for the 9 legacy keys", () => {
   assert.ok(isLegacyCategoryKey("ai-models"));
   assert.ok(isLegacyCategoryKey("opinion"));
-  assert.ok(!isLegacyCategoryKey("research"));
-  assert.ok(!isLegacyCategoryKey("writing"));
+  // "research" and "writing" are NOW current capability keys (v0.2.1), not legacy.
+  assert.ok(!isLegacyCategoryKey("not-a-legacy-key"));
   assert.ok(!isLegacyCategoryKey(null));
   assert.ok(!isLegacyCategoryKey(undefined));
   assert.ok(!isLegacyCategoryKey(42));
@@ -53,8 +53,10 @@ test("legacyCategoryRedirect returns URL only for legacy keys", () => {
   assert.equal(legacyCategoryRedirect("opinion", "/tools"), "/tools?category=writing");
 });
 
-test("legacyCategoryRedirect passes through current keys as null (no redirect needed)", () => {
-  // "research" is not in the legacy table → no redirect target.
+test("legacyCategoryRedirect passes through current capability keys as null (no redirect needed)", () => {
+  // "research" and "writing" are current keys (v0.2.1) → no redirect.
   assert.equal(legacyCategoryRedirect("research", "/all"), null);
   assert.equal(legacyCategoryRedirect("writing", "/tools"), null);
+  assert.equal(legacyCategoryRedirect("coding", "/tools"), null);
+  assert.equal(legacyCategoryRedirect("other", "/all"), null);
 });

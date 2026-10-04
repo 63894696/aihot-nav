@@ -1,9 +1,10 @@
 import { SITE, withSubject } from "@aihot/industry/site";
-import { Link, useLoaderData, useNavigation, useSearchParams } from "react-router";
+import { Link, redirect, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import type { Route } from "./+types/all";
 import type { PoolResponse } from "@aihot/contracts/site";
 import { isCategoryKey, isChannelKey } from "@aihot/contracts/taxonomy";
 import { loadOr404, queryString } from "../lib/api.server";
+import { legacyCategoryRedirect } from "../lib/categoryCompat";
 import { listPath, pageMeta } from "../lib/seo";
 import { CategoryTabs, SearchField } from "../features/feed/Filters";
 import { PillTabs } from "../components/ui/Tabs";
@@ -15,6 +16,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const channelParam = url.searchParams.get("channel") ?? "all";
   const categoryParam = url.searchParams.get("category");
+  const redirectTarget = legacyCategoryRedirect(categoryParam, "/all");
+  if (redirectTarget) throw redirect(redirectTarget);
   const channel = isChannelKey(channelParam) ? channelParam : "all";
   const category = categoryParam && isCategoryKey(categoryParam) ? categoryParam : null;
   const tag = url.searchParams.get("tag")?.trim() || null;

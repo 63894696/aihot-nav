@@ -1,12 +1,13 @@
 // /tools — the navigation layer's tool catalog. One card per publication (FeedItemSummary from
 // /api/site/tools). Filters: channel (all/news/firstParty) + category + tag + sort (recent|score) +
 // windowDays (1..90). Cursor pagination handled by the client side (load more).
-import { data as withHeaders, useLoaderData, useSearchParams } from "react-router";
+import { data as withHeaders, redirect, useLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/tools";
 import type { ToolsResponse } from "@aihot/contracts/site";
 import { isCategoryKey, isChannelKey, type CategoryKey, type ChannelKey } from "@aihot/contracts/taxonomy";
 import { withSubject } from "@aihot/industry/site";
 import { loadOr404, releaseBoundCache, queryString } from "../lib/api.server";
+import { legacyCategoryRedirect } from "../lib/categoryCompat";
 import { pageMeta, listPath } from "../lib/seo";
 import { monthDayTime } from "../lib/format";
 import { ToolGrid } from "../features/feed/ToolGrid";
@@ -28,7 +29,10 @@ const WINDOW_OPTIONS = [
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const channel: ChannelKey = isChannelKey(url.searchParams.get("channel")) ? (url.searchParams.get("channel") as ChannelKey) : "all";
-  const category: CategoryKey | null = isCategoryKey(url.searchParams.get("category")) ? (url.searchParams.get("category") as CategoryKey) : null;
+  const rawCategory = url.searchParams.get("category");
+  const redirectTarget = legacyCategoryRedirect(rawCategory, "/tools");
+  if (redirectTarget) throw redirect(redirectTarget);
+  const category: CategoryKey | null = isCategoryKey(rawCategory) ? (rawCategory as CategoryKey) : null;
   const tag = url.searchParams.get("tag")?.trim().slice(0, 60) ?? null;
   const sort = url.searchParams.get("sort") === "score" ? "score" : "recent";
   const windowDays = Math.min(Math.max(Number(url.searchParams.get("windowDays")) || 30, 1), 90);

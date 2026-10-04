@@ -1,22 +1,34 @@
 // 这个行业的分类体系：类别、标签词表、公司（主体）名录，以及防止张冠李戴的身份词典。
 // 模型按这里的词表打标签，主题页（topics.json）按标签归类，筛选栏按类别分组。
 // 换行业时：类别的 key 会出现在网址里（/all?category=…），上线后就不要再改；标签和名录可以随时增减。
+//
+// v0.2.1：分类从「事件型」改为「能力型」。事件型（模型/产品/融资/政策/论文/教程/观点…）描述「发生了什么」
+// 能力型（写作/编程/图像/视频/音频/Agent/数据/研究/效率/洞察/其他）描述「这个东西能干什么」。
+// 站点定位从「AI 行业资讯」改为「AI 工具导航站」，需要让一张工具卡 / 一个提示词 / 一篇论文
+// 都能在同一个能力维度上互相交叉发现。
+//
+// 旧的 9 个事件型 key（ai-models / ai-products / industry / funding / policy / paper / safety /
+// tip / opinion）通过 LEGACY_CATEGORY_REDIRECT（packages/contracts/src/taxonomy.ts）做 301 重定向
+// 到对应的能力型 key，本文件不再保留它们 —— 老 URL 进 route loader 后走 resolveCategoryKey /
+// legacyCategoryRedirect。
 
 /**
  * 网页上的类别（筛选栏、卡片角标、RSS 分类订阅）。key 是网址和接口里的身份，上线后不要改。
  * section 是日报里的分节标题（几个类别可以共用一节，按这里的顺序排）；guide 告诉模型怎么归类。
- * 没归上类的资料在日报里放进第一个 key 为 industry 的类别所在的节（没有就放最后一节）。
+ * 没归上类的资料在日报里放进第一个 key 为 other 的类别所在的节（没有就放最后一节）。
  */
 export const CATEGORIES = [
-  { key: "ai-models", label: "模型", section: "模型发布/更新", guide: "新模型、模型版本、权重开放、模型能力与价格变化的发布与评测结果" },
-  { key: "ai-products", label: "产品", section: "产品发布/更新", guide: "AI 产品、功能、应用、平台与 API 的发布和更新" },
-  { key: "industry", label: "行业", section: "行业动态", guide: "公司经营、人事、合作、诉讼、市场与基础设施变化" },
-  { key: "funding", label: "融资", section: "行业动态", guide: "融资、估值、收购、并购、IPO 与资本运作" },
-  { key: "policy", label: "政策", section: "行业动态", guide: "监管、法规、政策、合规、政府指令与行业治理" },
-  { key: "paper", label: "论文", section: "论文研究", guide: "研究论文、技术报告、基准与数据集" },
-  { key: "safety", label: "安全", section: "安全与对齐", guide: "安全、对齐、红队、越狱、滥用、伦理与负责任 AI" },
-  { key: "tip", label: "教程", section: "技巧与观点", guide: "教程、实践经验、使用技巧、提示词与工具用法、深度技术讲解" },
-  { key: "opinion", label: "观点", section: "技巧与观点", guide: "人物观点、评论、分析、访谈、现象与趋势讨论" },
+  { key: "writing", label: "写作", section: "内容创作", guide: "写作、改写、润色、营销文案、长文生成、翻译、播客脚本等围绕文本生成/编辑的工具与模型" },
+  { key: "coding", label: "编程", section: "开发工具", guide: "代码生成、review、debug、refactor、test、IDE/Cursor/Copilot/Windsurf 等开发辅助工具" },
+  { key: "image", label: "图像", section: "内容创作", guide: "图像生成、编辑、放大、SD/MJ/DALL-E 风格 prompt、相机/光照控制、修图工具" },
+  { key: "video", label: "视频", section: "内容创作", guide: "文生视频、图生视频、镜头控制、视频编辑、视频增强（Sora/Runway/Kling/Veo 等）" },
+  { key: "audio", label: "音频", section: "内容创作", guide: "TTS、声音克隆、音乐生成、播客编辑、配音、音频分离（Suno/Udio/ElevenLabs 等）" },
+  { key: "agent", label: "Agent", section: "自动化", guide: "工具调用、多步任务、planning/reflection、Computer Use、Devin/Manus 等自主代理" },
+  { key: "data", label: "数据", section: "自动化", guide: "SQL/Pandas 数据分析、可视化、ETL、数据清洗、商业智能工具" },
+  { key: "research", label: "研究", section: "研究与应用", guide: "市场分析、竞品调研、用户访谈、文献综述、深度搜索（Perplexity/Genspark 等）" },
+  { key: "productivity", label: "效率", section: "效率与办公", guide: "效率工具、会议转录、Notion AI、笔记、知识管理、办公自动化（不含纯写作）" },
+  { key: "insight", label: "洞察", section: "研究与应用", guide: "教程、实践经验、使用技巧、人物观点、评论分析、趋势讨论 —— v0.2.0 的 tip + opinion + safety 合并到这里" },
+  { key: "other", label: "其他", section: "其他", guide: "兜底类别：v0.2.0 的 industry/funding/policy/ai-products 合并到这里，行业动态相关" },
 ] as const;
 
 /**
