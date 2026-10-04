@@ -152,3 +152,30 @@ export async function loadPaperDetail(arxivId: string): Promise<PaperDetail | nu
 
 /** Same data as loadPaperDetail — the OG renderer wants a paper-shaped payload. */
 export const loadPaperShare = loadPaperDetail;
+
+/**
+ * Sibling papers in the same arXiv primary_category as the given paper (excludes the paper itself).
+ * Used by the /papers/$id "相关论文" related-section so a reader on a single paper can navigate
+ * sideways through the same research area without going back to /papers. There is no cross-axis
+ * join yet (tool_papers / prompt_papers come in a later commit) — today the only structured link
+ * is the arXiv category, so this stays scoped to it.
+ *
+ * Order mirrors the /papers list: translated papers first, then by published_at DESC.
+ *
+ * Returns [] when the paper is unknown (defensive — caller already 404s if the parent detail is
+ * missing, but a stale cache hit should not throw here).
+ */
+export async function loadPaperSiblings(arxivId: string, limit = 6): Promise<PaperSummary[]> {
+  if (!/^\d{4}\.\d{4,5}$/.test(arxivId)) return [];
+  const safeLimit = Math.min(Math.max(limit, 1), 12);
+  const rows = await sql<Array<Pick<PaperRow, "arxiv_id" | "title_en" | "title_zh" | "abstract_en" | "abstract_zh" | "authors" | "primary_category" | "published_at" | "abs_url" | "status">>>`
+    SELECT arxiv_id, title_en, title_zh, abstract_en, abstract_zh, authors, primary_category, published_at, abs_url, status
+    FROM papers
+    WHERE arxiv_id <> ${arxivId}
+      AND primary_category = (SELECT primary_category FROM papers WHERE arxiv_id = ${arxivId})
+    ORDER BY (CASE WHEN status = 'translated' THEN 0 ELSE 1 END),
+             published_at DESC,
+             arxiv_id DESC
+    LIMIT ${safeLimit}`;
+  return rows.map(toPaperSummary);
+}

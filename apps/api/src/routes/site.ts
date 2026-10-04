@@ -9,7 +9,7 @@ import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
-import { loadPapers, loadPaperDetail } from "@aihot/backend/publication/papers";
+import { loadPapers, loadPaperDetail, loadPaperSiblings } from "@aihot/backend/publication/papers";
 import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
 import { PROMPT_CATEGORIES, type PromptCategory } from "@aihot/contracts/site";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
@@ -253,6 +253,16 @@ export function registerSite(app: FastifyInstance) {
     const d = await loadPaperDetail(id);
     if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "paper not found" });
     return sendJsonWithEtag(req, reply, d, { etagPrefix: "paper", cacheControl: "public, max-age=300, s-maxage=300" });
+  }));
+
+  // W5-3 v0.2.1-#4 — sibling papers in the same arXiv primary_category. The detail page renders
+  // this as a horizontal row beneath the abstract so a reader can navigate sideways without
+  // bouncing back to /papers. Empty array means the paper is unknown or no other paper shares the
+  // category in the table — the UI degrades by hiding the section, not by 404'ing.
+  app.get("/api/site/papers/:id/siblings", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const items = await loadPaperSiblings(id, 6);
+    return sendJsonWithEtag(req, reply, { items }, { etagPrefix: "paper-siblings", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   // W5-3 — prompt column. Public read layer for reusable prompts collected from public posts.

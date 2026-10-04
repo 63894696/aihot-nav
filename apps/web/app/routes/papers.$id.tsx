@@ -1,64 +1,83 @@
 // /papers/:id — paper detail page (W4b plan §3.3). Full key_points expanded, full author list,
 // arXiv abs / PDF / abs mirror three links. BreadcrumbList + ScholarlyArticle JSON-LD so the
 // detail page also shows up as a research-paper rich result when shared.
+//
+// W5-3 v0.2.1-#4 — adds a "相关论文" row at the bottom showing up to 6 sibling papers in the same
+// arXiv primary_category. Today there is no tool_papers / prompt_papers join table, so this is
+// strictly same-category siblings — that is the only structured cross-paper link we have. The
+// endpoint stays parallel to the detail (GET /api/site/papers/:id/siblings) so #5 can extend it
+// without breaking callers.
 import { SITE } from "@aihot/industry/site";
-import type { PaperDetail } from "@aihot/contracts/site";
+import type { PaperDetail, PaperSummary } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/papers.$id";
 import { useState } from "react";
-import { loadOr404 } from "../lib/api.server";
+import { apiGet, loadOr404 } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
 import { breadcrumbLd } from "../lib/seo";
 import { beijingDate } from "@aihot/contracts/time";
 import { AsideCard, ArticleLayout } from "../components/ui/Page";
 import { IconArrowLeft, IconCopy, IconExternal } from "../components/icons";
+import { PaperSiblingCard } from "../features/papers/PaperSiblingCard";
 
 export function headers() {
   return { "Cache-Control": "public, max-age=0, s-maxage=300, stale-while-revalidate=600" };
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  return loadOr404<PaperDetail>(`/api/site/papers/${encodeURIComponent(params.id)}`, { signal: request.signal });
+  const detail = await loadOr404<PaperDetail>(`/api/site/papers/${encodeURIComponent(params.id)}`, { signal: request.signal });
+  // Siblings are best-effort: a failure here must not 500 the page. The row hides itself when
+  // the array is empty (no other paper in the category yet, or the paper itself is the only one
+  // in its bucket). We surface a real 404 only when the parent detail is missing — `loadOr404`
+  // already does that for /api/site/papers/:id.
+  let siblings: PaperSummary[] = [];
+  try {
+    const r = await apiGet<{ items: PaperSummary[] }>(`/api/site/papers/${encodeURIComponent(params.id)}/siblings`, { signal: request.signal });
+    siblings = Array.isArray(r.items) ? r.items : [];
+  } catch {
+    // Degrade silently — the parent page still renders.
+  }
+  return { detail, siblings };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const data = loaderData as PaperDetail | undefined;
-  if (!data) return pageMeta({ title: "论文", path: "/papers", noindex: true });
-  const title = data.titleZh ?? data.titleEn;
-  const description = (data.abstractZh ?? data.abstractEn).slice(0, 200);
+  const detail = loaderData?.detail as PaperDetail | undefined;
+  if (!detail) return pageMeta({ title: "论文", path: "/papers", noindex: true });
+  const title = detail.titleZh ?? detail.titleEn;
+  const description = (detail.abstractZh ?? detail.abstractEn).slice(0, 200);
   return pageMeta({
     title,
     description,
-    path: `/papers/${data.id}`,
-    image: `/og/papers/${data.id}.png`,
+    path: `/papers/${detail.id}`,
+    image: `/og/papers/${detail.id}.png`,
     rawTitle: true,
     type: "article",
     jsonLd: [
       breadcrumbLd([
         { name: SITE.name, path: "/" },
         { name: "论文解读", path: "/papers" },
-        { name: title, path: `/papers/${data.id}` },
+        { name: title, path: `/papers/${detail.id}` },
       ]),
       {
         "@context": "https://schema.org",
         "@type": "ScholarlyArticle",
         headline: title,
-        alternativeHeadline: data.titleZh && data.titleEn !== data.titleZh ? data.titleEn : undefined,
-        datePublished: data.publishedAt,
-        dateModified: data.translatedAt ?? data.publishedAt,
-        inLanguage: data.abstractZh ? "zh-Hans" : "en",
-        author: data.authors.map((name) => ({ "@type": "Person", name })),
+        alternativeHeadline: detail.titleZh && detail.titleEn !== detail.titleZh ? detail.titleEn : undefined,
+        datePublished: detail.publishedAt,
+        dateModified: detail.translatedAt ?? detail.publishedAt,
+        inLanguage: detail.abstractZh ? "zh-Hans" : "en",
+        author: detail.authors.map((name) => ({ "@type": "Person", name })),
         publisher: { "@type": "Organization", name: SITE.name },
-        url: data.absUrl,
-        sameAs: [data.absUrl, data.pdfUrl],
-        keywords: [data.primaryCategory].join(", "),
+        url: detail.absUrl,
+        sameAs: [detail.absUrl, detail.pdfUrl],
+        keywords: [detail.primaryCategory].join(", "),
       },
     ],
   });
 }
 
 export default function PaperDetailPage() {
-  const d = useLoaderData<typeof loader>();
+  const { detail: d, siblings } = useLoaderData<typeof loader>();
   const [copiedId, setCopiedId] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
@@ -214,6 +233,35 @@ export default function PaperDetailPage() {
             <summary className="cursor-pointer text-[14px] font-semibold text-ink hover:text-accent">原始英文摘要</summary>
             <p className="mt-3 text-[13px] leading-[1.85] text-ink-3">{d.abstractEnFull}</p>
           </details>
+        </section>
+      )}
+
+      {siblings.length > 0 && (
+        <section className="mt-6">
+          <header className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="text-[14px] font-semibold text-ink">同方向论文 · {d.primaryCategory}</h2>
+            <Link
+              to={`/papers?category=${encodeURIComponent(d.primaryCategory)}`}
+              className="text-[12px] text-accent hover:underline"
+            >
+              查看全部 →
+            </Link>
+          </header>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {siblings.map((p) => (
+              <PaperSiblingCard
+                key={p.id}
+                paper={{
+                  id: p.id,
+                  titleZh: p.titleZh,
+                  titleEn: p.titleEn,
+                  primaryCategory: p.primaryCategory,
+                  publishedAt: p.publishedAt,
+                  status: (p.status as "translated" | "partial" | "translating" | "failed" | "fetched") ?? "fetched",
+                }}
+              />
+            ))}
+          </div>
         </section>
       )}
     </ArticleLayout>
