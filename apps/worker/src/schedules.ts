@@ -28,6 +28,7 @@ import { translateArxivPending } from "./jobs/arxiv-translate.ts";
 import { syncHuggingFaceDaily } from "./jobs/papers-hf-sync.ts";
 import { fetchSearchQueries } from "./jobs/search-fetch.ts";
 import { fetchPromptQueries } from "./jobs/prompt-fetch.ts";
+import { fetchAwesomeCopilotAssets } from "./jobs/awesome-copilot-fetch.ts";
 
 interface Scheduled {
   name: string;
@@ -110,6 +111,12 @@ export const SCHEDULES: Scheduled[] = [
   // re-run is idempotent. Singleton not required for the same reason as search.fetch. The 5-min
   // offset from search.fetch keeps the two score batches from colliding on the model at :00.
   { name: "prompts.fetch", cron: "5 * * * *", run: () => fetchPromptQueries() },
+  // W5-3 code-prompts expansion: pull github.com/github/awesome-copilot assets (agents /
+  // instructions / skills) into copilot_assets. Driven by an explicit `*/15 * * * *` cycle
+  // (NOT every 20 min like arxiv) — GitHub Contents API allows 60 unauth requests/hour/IP,
+  // so 4-per-hour × 3 sources = 12 tree calls + raw fetches stays well under budget. The job
+  // self-throttles via blob_sha skip: unchanged files never re-download.
+  { name: "awesome-copilot.fetch", cron: "*/15 * * * *", run: () => fetchAwesomeCopilotAssets() },
 ];
 
 export async function registerSchedules(boss: PgBoss) {

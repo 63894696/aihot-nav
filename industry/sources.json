@@ -638,6 +638,87 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-unbug",
+      "name": "Unbug 一分钟读论文",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://unbug.github.io/feed.xml",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "editorial",
+      "interval_minutes": 1440,
+      "tags": [
+        "个人",
+        "中文",
+        "深度解读",
+        "论文"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "external-awesome-copilot-agents",
+      "name": "GitHub awesome-copilot (agents)",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 10080,
+      "tags": [
+        "awesome-copilot",
+        "awesome-list",
+        "GitHub",
+        "agents"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "external-awesome-copilot-instructions",
+      "name": "GitHub awesome-copilot (instructions)",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 10080,
+      "tags": [
+        "awesome-copilot",
+        "awesome-list",
+        "GitHub",
+        "instructions"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "external-awesome-copilot-skills",
+      "name": "GitHub awesome-copilot (skills)",
+      "kind": "external",
+      "config": {},
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "isolated",
+      "interval_minutes": 10080,
+      "tags": [
+        "awesome-copilot",
+        "awesome-list",
+        "GitHub",
+        "skills"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
     }
   ]
 }

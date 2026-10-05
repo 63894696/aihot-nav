@@ -11,8 +11,10 @@ import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
 import { loadPapers, loadPaperDetail, loadPaperSiblings } from "@aihot/backend/publication/papers";
 import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
+import { loadCopilotAssets, loadCopilotAssetDetail } from "@aihot/backend/publication/awesome-copilot";
 import { loadDiscover } from "@aihot/backend/publication/discover";
 import { PROMPT_CATEGORIES, type PromptCategory } from "@aihot/contracts/site";
+import { COPILOT_ASSET_KINDS, type CopilotAssetKind } from "@aihot/contracts/awesome-copilot";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
 import { loadTopicTags } from "@aihot/backend/publication/topics";
@@ -313,6 +315,39 @@ export function registerSite(app: FastifyInstance) {
     const d = await loadPromptDetail(id);
     if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "prompt not found" });
     return sendJsonWithEtag(req, reply, d, { etagPrefix: "prompt", cacheControl: "public, max-age=300, s-maxage=300" });
+  }));
+
+  // W5-3 code-prompts expansion: github.com/github/awesome-copilot read layer.
+  // Cursor pagination mirrors /api/site/prompts; kind filter is the only facet.
+  app.get("/api/site/awesome-copilot", siteHandler(async (req, reply) => {
+    const q = looseQuery(req);
+    const kindParam = q.kind?.trim() || null;
+    const kind = kindParam && (COPILOT_ASSET_KINDS as readonly string[]).includes(kindParam)
+      ? (kindParam as CopilotAssetKind)
+      : null;
+    if (kindParam && kind === null) {
+      return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: "invalid kind" });
+    }
+    const limit = Number(q.limit) || 30;
+    const cursor = q.cursor || null;
+    let data;
+    try {
+      data = await loadCopilotAssets({ kind, limit, cursor });
+    } catch (e) {
+      if (e instanceof InvalidCursorError) {
+        return sendProblem(req, reply, { status: 400, code: "invalid_cursor", detail: "cursor does not match this query" });
+      }
+      throw e;
+    }
+    const cc = cacheUntil(reply, 60, data.refreshAt);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "copilot", cacheControl: cc });
+  }));
+
+  app.get("/api/site/awesome-copilot/:id", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const d = await loadCopilotAssetDetail(id);
+    if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "asset not found" });
+    return sendJsonWithEtag(req, reply, d, { etagPrefix: "copilot", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   app.get("/api/site/items/availability", siteHandler(async (req, reply) => {
