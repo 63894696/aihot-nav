@@ -255,7 +255,9 @@ interface CopilotFeedRow {
  */
 export async function codePromptFeed(): Promise<string> {
   const rows = await sql<CopilotFeedRow[]>`
-    SELECT (source_id || '::' || slug) AS id, filename, asset_kind, repo_slug, raw_url, body_preview, fetched_at
+    SELECT (source_id || '::' || slug) AS id, filename, asset_kind, repo_slug, raw_url,
+           substring(regexp_replace(coalesce(body_md, ''), '\\s+', ' ', 'g') from 1 for 280) AS body_preview,
+           fetched_at
       FROM copilot_assets
       WHERE status = 'fetched' AND length(coalesce(body_md, '')) > 0
       ORDER BY fetched_at DESC, source_id, slug
