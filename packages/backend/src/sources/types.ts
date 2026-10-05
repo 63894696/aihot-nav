@@ -20,7 +20,7 @@ export interface SourceRow {
  * candidates from RSS / web_list / json_list collectors.
  */
 export interface SearchMeta {
-  provider: "searxng" | "hn_algolia" | "github_trending" | "tavily";
+  provider: "searxng" | "hn_algolia" | "github_trending" | "tavily" | "brave";
   queryId: string;
   queryText: string;
   queryLang?: string | null;

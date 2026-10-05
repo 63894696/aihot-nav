@@ -28,6 +28,7 @@ import { fetchSearxng, type SearxngCursor } from "@aihot/backend/sources/searxng
 import { fetchHnAlgolia } from "@aihot/backend/sources/hn-algolia";
 import { fetchGithubTrending } from "@aihot/backend/sources/github-trending";
 import { fetchTavily } from "@aihot/backend/sources/tavily";
+import { fetchBrave } from "@aihot/backend/sources/brave";
 
 const SOURCE_ID = "search-api-virtual";
 const CYCLE_CONCURRENCY = 6;
@@ -42,6 +43,12 @@ interface QueryFile {
  *  comfortably below the 1000/month free tier. The counter persists in sources.cursor.tavilyCycleN
  *  so it survives worker restarts. */
 const TAVILY_CYCLE_EVERY = 8;
+
+/** Brave cycle gate: independent from Tavily so each engine's cadence is owned by its own
+ *  counter. Brave's free tier is $5/month credit ≈ 1000 queries; with BRAVE_CYCLE_EVERY=8 and
+ *  ≤9 zh queries per armed cycle, that is ≤27 calls/day ≈ 810/month — same arithmetic as
+ *  Tavily, both stay under their free cap with separate failure domains. */
+const BRAVE_CYCLE_EVERY = 8;
 
 interface RunResult {
   queries: number;
@@ -78,17 +85,20 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
   }
 
   const queries = loadQueries("search");
-  const cursorObj = (src.cursor as { searxng?: SearxngCursor; tavilyCycleN?: number } | null) ?? null;
+  const cursorObj = (src.cursor as { searxng?: SearxngCursor; tavilyCycleN?: number; braveCycleN?: number } | null) ?? null;
   const cursor = cursorObj?.searxng ?? null;
   let nextSearxngCursor: SearxngCursor = cursor ?? { cursor: 0, recentlyFailed: [] };
   // Tavily cycle gate: bump the counter at the start of each run, only fire on cycles where
   // (cycleN % TAVILY_CYCLE_EVERY === 0). The first cycle (cycleN===0) is a normal run.
   const tavilyCycleN = (cursorObj?.tavilyCycleN ?? -1) + 1;
   const tavilyEnabled = (tavilyCycleN % TAVILY_CYCLE_EVERY) === 0;
+  // Brave cycle gate: independent counter so each engine's cadence is owned by its own column.
+  const braveCycleN = (cursorObj?.braveCycleN ?? -1) + 1;
+  const braveEnabled = (braveCycleN % BRAVE_CYCLE_EVERY) === 0;
 
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
-  const providers: Record<string, number> = { searxng: 0, hn_algolia: 0, github_trending: 0, tavily: 0 };
+  const providers: Record<string, number> = { searxng: 0, hn_algolia: 0, github_trending: 0, tavily: 0, brave: 0 };
   let fetched = 0;
 
   for (const q of queries) {
@@ -103,12 +113,21 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
     if (q.lang === "zh" && tavilyEnabled) {
       tasks.push(withTimeout(fetchTavily(q), perFetchMs, `tavily:${q.id}`));
     }
+    // Brave arm: same gating pattern as Tavily, with its own cycle counter.
+    if (q.lang === "zh" && braveEnabled) {
+      tasks.push(withTimeout(fetchBrave(q), perFetchMs, `brave:${q.id}`));
+    }
     const settled = await Promise.allSettled(tasks);
     const searxngRes = settled[0] as PromiseSettledResult<Awaited<ReturnType<typeof fetchSearxng>>>;
     const hnRes = settled[1] as PromiseSettledResult<Awaited<ReturnType<typeof fetchHnAlgolia>>>;
     const ghRes = settled[2] as PromiseSettledResult<Awaited<ReturnType<typeof fetchGithubTrending>>>;
-    const tavilyRes = tasks.length === 4
+    // tasks.length is 3 (only the always-on arms) | 4 (tavily armed) | 5 (tavily+brave armed).
+    // en queries never see 4 or 5 because the cycle-gated arms only fire on lang:zh.
+    const tavilyRes = tavilyEnabled
       ? (settled[3] as PromiseSettledResult<Awaited<ReturnType<typeof fetchTavily>>>)
+      : null;
+    const braveRes = braveEnabled
+      ? (settled[tavilyEnabled ? 4 : 3] as PromiseSettledResult<Awaited<ReturnType<typeof fetchBrave>>>)
       : null;
     // SearXNG keeps its cursor across calls even on a per-query failure so a single dead
     // instance does not pin the worker to its neighbours for the rest of the run.
@@ -132,6 +151,11 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
       providers.tavily += tavilyRes.value.candidates.length;
       fetched += tavilyRes.value.candidates.length;
       mergeDeduped(tavilyRes.value.candidates, seen, candidates);
+    }
+    if (braveRes && braveRes.status === "fulfilled" && !braveRes.value.skippedNoKey) {
+      providers.brave += braveRes.value.candidates.length;
+      fetched += braveRes.value.candidates.length;
+      mergeDeduped(braveRes.value.candidates, seen, candidates);
     }
   }
   const deduped = candidates.length;
@@ -186,7 +210,7 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
     }
   }
 
-  await persistCursor(src.id, nextSearxngCursor, tavilyCycleN);
+  await persistCursor(src.id, nextSearxngCursor, tavilyCycleN, braveCycleN);
   return { queries: queries.length, fetched, deduped, scored, passed, skipped_model: skippedModel, upserted, providers };
 }
 
@@ -216,8 +240,8 @@ function mergeDeduped(batch: Candidate[], seen: Set<string>, out: Candidate[]): 
   }
 }
 
-async function persistCursor(sourceId: string, searxngCursor: SearxngCursor, tavilyCycleN: number): Promise<void> {
-  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: searxngCursor, tavilyCycleN } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
+async function persistCursor(sourceId: string, searxngCursor: SearxngCursor, tavilyCycleN: number, braveCycleN: number): Promise<void> {
+  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: searxngCursor, tavilyCycleN, braveCycleN } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {

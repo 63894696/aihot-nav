@@ -32,6 +32,7 @@ import { scorePrompt } from "@aihot/backend/publication/prompt-score";
 import type { Candidate, SourceRow } from "@aihot/backend/sources/types";
 import { fetchSearxng, type SearxngCursor } from "@aihot/backend/sources/searxng";
 import { fetchTavily } from "@aihot/backend/sources/tavily";
+import { fetchBrave } from "@aihot/backend/sources/brave";
 
 const SOURCE_ID = "prompts-api-virtual";
 const SOURCE_KIND = "searxng_search";
@@ -42,6 +43,12 @@ const CYCLE_CONCURRENCY = 6;
  *  bounded across both pipelines (worst case: 24 cycles/day × 2 pipelines / 8 + zh queries ≈
  *  6 calls/day/pipeline = ~360 calls/month combined). */
 const TAVILY_CYCLE_EVERY = 8;
+
+/** Brave cycle gate — independent counter so each engine owns its own cadence. With
+ *  BRAVE_CYCLE_EVERY=8 and ≤5 zh prompt queries per armed cycle: 3 cycles/day × 5 = 15 calls/day
+ *  ≈ 450/month for the prompt pipeline alone. Combined with the search pipeline's Brave arm,
+ *  the two still stay under Brave's free $5/month credit ceiling. */
+const BRAVE_CYCLE_EVERY = 8;
 
 interface QueryFile {
   version: string;
@@ -83,11 +90,13 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
   }
 
   const queries = loadQueries("prompt");
-  const cursorObj = (src.cursor as { searxng?: SearxngCursor; tavilyCycleN?: number } | null) ?? null;
+  const cursorObj = (src.cursor as { searxng?: SearxngCursor; tavilyCycleN?: number; braveCycleN?: number } | null) ?? null;
   const cursor = cursorObj?.searxng ?? null;
   let nextSearxngCursor: SearxngCursor = cursor ?? { cursor: 0, recentlyFailed: [] };
   const tavilyCycleN = (cursorObj?.tavilyCycleN ?? -1) + 1;
   const tavilyEnabled = (tavilyCycleN % TAVILY_CYCLE_EVERY) === 0;
+  const braveCycleN = (cursorObj?.braveCycleN ?? -1) + 1;
+  const braveEnabled = (braveCycleN % BRAVE_CYCLE_EVERY) === 0;
 
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
@@ -101,10 +110,18 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
     if (q.lang === "zh" && tavilyEnabled) {
       tasks.push(withTimeout(fetchTavily(q), perFetchMs, `tavily:${q.id}`));
     }
+    if (q.lang === "zh" && braveEnabled) {
+      tasks.push(withTimeout(fetchBrave(q), perFetchMs, `brave:${q.id}`));
+    }
     const res = await Promise.allSettled(tasks);
     const searxngRes = res[0] as PromiseSettledResult<Awaited<ReturnType<typeof fetchSearxng>>>;
-    const tavilyRes = res.length === 2
+    // tasks.length is 1 (only SearXNG) | 2 (tavily armed) | 3 (tavily+brave armed). en queries
+    // never see 2 or 3 because the cycle-gated arms only fire on lang:zh.
+    const tavilyRes = tavilyEnabled
       ? (res[1] as PromiseSettledResult<Awaited<ReturnType<typeof fetchTavily>>>)
+      : null;
+    const braveRes = braveEnabled
+      ? (res[tavilyEnabled ? 2 : 1] as PromiseSettledResult<Awaited<ReturnType<typeof fetchBrave>>>)
       : null;
     if (searxngRes.status === "fulfilled") {
       nextSearxngCursor = searxngRes.value.cursor;
@@ -114,6 +131,10 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
     if (tavilyRes && tavilyRes.status === "fulfilled" && !tavilyRes.value.skippedNoKey) {
       fetched += tavilyRes.value.candidates.length;
       mergeDeduped(tavilyRes.value.candidates, seen, candidates);
+    }
+    if (braveRes && braveRes.status === "fulfilled" && !braveRes.value.skippedNoKey) {
+      fetched += braveRes.value.candidates.length;
+      mergeDeduped(braveRes.value.candidates, seen, candidates);
     }
   }
   const deduped = candidates.length;
@@ -166,7 +187,7 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
     }
   }
 
-  await persistCursor(src.id, nextSearxngCursor, tavilyCycleN);
+  await persistCursor(src.id, nextSearxngCursor, tavilyCycleN, braveCycleN);
   return { queries: queries.length, fetched, deduped, scored, extracted, skipped_model: skippedModel, inserted, duplicates };
 }
 
@@ -246,8 +267,8 @@ function languageFromUrl(url: string, queryLang: string | null): string {
   return "en";
 }
 
-async function persistCursor(sourceId: string, searxngCursor: SearxngCursor, tavilyCycleN: number): Promise<void> {
-  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: searxngCursor, tavilyCycleN } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
+async function persistCursor(sourceId: string, searxngCursor: SearxngCursor, tavilyCycleN: number, braveCycleN: number): Promise<void> {
+  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: searxngCursor, tavilyCycleN, braveCycleN } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
