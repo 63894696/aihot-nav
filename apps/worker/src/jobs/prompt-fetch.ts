@@ -31,10 +31,17 @@ import { identityKeyForUrl } from "@aihot/backend/lib/url";
 import { scorePrompt } from "@aihot/backend/publication/prompt-score";
 import type { Candidate, SourceRow } from "@aihot/backend/sources/types";
 import { fetchSearxng, type SearxngCursor } from "@aihot/backend/sources/searxng";
+import { fetchTavily } from "@aihot/backend/sources/tavily";
 
 const SOURCE_ID = "prompts-api-virtual";
 const SOURCE_KIND = "searxng_search";
 const CYCLE_CONCURRENCY = 6;
+
+/** Tavily cycle gate — matches search-fetch.ts. The two orchestrators keep separate cursor rows
+ *  on different sources but use the same TAVILY_CYCLE_EVERY rhythm so the free-tier spend is
+ *  bounded across both pipelines (worst case: 24 cycles/day × 2 pipelines / 8 + zh queries ≈
+ *  6 calls/day/pipeline = ~360 calls/month combined). */
+const TAVILY_CYCLE_EVERY = 8;
 
 interface QueryFile {
   version: string;
@@ -76,8 +83,11 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
   }
 
   const queries = loadQueries("prompt");
-  const cursor = (src.cursor as { searxng?: SearxngCursor } | null)?.searxng ?? null;
+  const cursorObj = (src.cursor as { searxng?: SearxngCursor; tavilyCycleN?: number } | null) ?? null;
+  const cursor = cursorObj?.searxng ?? null;
   let nextSearxngCursor: SearxngCursor = cursor ?? { cursor: 0, recentlyFailed: [] };
+  const tavilyCycleN = (cursorObj?.tavilyCycleN ?? -1) + 1;
+  const tavilyEnabled = (tavilyCycleN % TAVILY_CYCLE_EVERY) === 0;
 
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
@@ -85,13 +95,25 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
 
   for (const q of queries) {
     if (Date.now() > deadline) break;
-    const res = await Promise.allSettled([
+    const tasks: Promise<unknown>[] = [
       withTimeout(fetchSearxng(q, nextSearxngCursor), perFetchMs, `searxng:${q.id}`),
-    ]);
-    if (res[0].status === "fulfilled") {
-      nextSearxngCursor = res[0].value.cursor;
-      fetched += res[0].value.candidates.length;
-      mergeDeduped(res[0].value.candidates, seen, candidates);
+    ];
+    if (q.lang === "zh" && tavilyEnabled) {
+      tasks.push(withTimeout(fetchTavily(q), perFetchMs, `tavily:${q.id}`));
+    }
+    const res = await Promise.allSettled(tasks);
+    const searxngRes = res[0] as PromiseSettledResult<Awaited<ReturnType<typeof fetchSearxng>>>;
+    const tavilyRes = res.length === 2
+      ? (res[1] as PromiseSettledResult<Awaited<ReturnType<typeof fetchTavily>>>)
+      : null;
+    if (searxngRes.status === "fulfilled") {
+      nextSearxngCursor = searxngRes.value.cursor;
+      fetched += searxngRes.value.candidates.length;
+      mergeDeduped(searxngRes.value.candidates, seen, candidates);
+    }
+    if (tavilyRes && tavilyRes.status === "fulfilled" && !tavilyRes.value.skippedNoKey) {
+      fetched += tavilyRes.value.candidates.length;
+      mergeDeduped(tavilyRes.value.candidates, seen, candidates);
     }
   }
   const deduped = candidates.length;
@@ -144,7 +166,7 @@ export async function fetchPromptQueries(opts: PromptFetchOpts = {}): Promise<Ru
     }
   }
 
-  await persistCursor(src.id, nextSearxngCursor);
+  await persistCursor(src.id, nextSearxngCursor, tavilyCycleN);
   return { queries: queries.length, fetched, deduped, scored, extracted, skipped_model: skippedModel, inserted, duplicates };
 }
 
@@ -224,8 +246,8 @@ function languageFromUrl(url: string, queryLang: string | null): string {
   return "en";
 }
 
-async function persistCursor(sourceId: string, cursor: SearxngCursor): Promise<void> {
-  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: cursor } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
+async function persistCursor(sourceId: string, searxngCursor: SearxngCursor, tavilyCycleN: number): Promise<void> {
+  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: searxngCursor, tavilyCycleN } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {

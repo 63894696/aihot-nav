@@ -27,6 +27,7 @@ import type { Candidate, SourceRow } from "@aihot/backend/sources/types";
 import { fetchSearxng, type SearxngCursor } from "@aihot/backend/sources/searxng";
 import { fetchHnAlgolia } from "@aihot/backend/sources/hn-algolia";
 import { fetchGithubTrending } from "@aihot/backend/sources/github-trending";
+import { fetchTavily } from "@aihot/backend/sources/tavily";
 
 const SOURCE_ID = "search-api-virtual";
 const CYCLE_CONCURRENCY = 6;
@@ -35,6 +36,12 @@ interface QueryFile {
   version: string;
   queries: Array<{ id: string; q: string; lang?: string; category?: string }>;
 }
+
+/** Tavily cycle gate: only invoke Tavily every TAVILY_CYCLE_EVERY cycles. With 24 cycles/day
+ *  and TAVILY_CYCLE_EVERY=8, that is 3 cycles/day × ≤5 zh queries = ≤15 calls/day = ~450/month,
+ *  comfortably below the 1000/month free tier. The counter persists in sources.cursor.tavilyCycleN
+ *  so it survives worker restarts. */
+const TAVILY_CYCLE_EVERY = 8;
 
 interface RunResult {
   queries: number;
@@ -71,21 +78,38 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
   }
 
   const queries = loadQueries("search");
-  const cursor = (src.cursor as { searxng?: SearxngCursor } | null)?.searxng ?? null;
+  const cursorObj = (src.cursor as { searxng?: SearxngCursor; tavilyCycleN?: number } | null) ?? null;
+  const cursor = cursorObj?.searxng ?? null;
   let nextSearxngCursor: SearxngCursor = cursor ?? { cursor: 0, recentlyFailed: [] };
+  // Tavily cycle gate: bump the counter at the start of each run, only fire on cycles where
+  // (cycleN % TAVILY_CYCLE_EVERY === 0). The first cycle (cycleN===0) is a normal run.
+  const tavilyCycleN = (cursorObj?.tavilyCycleN ?? -1) + 1;
+  const tavilyEnabled = (tavilyCycleN % TAVILY_CYCLE_EVERY) === 0;
 
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
-  const providers: Record<string, number> = { searxng: 0, hn_algolia: 0, github_trending: 0 };
+  const providers: Record<string, number> = { searxng: 0, hn_algolia: 0, github_trending: 0, tavily: 0 };
   let fetched = 0;
 
   for (const q of queries) {
     if (Date.now() > deadline) break;
-    const [searxngRes, hnRes, ghRes] = await Promise.allSettled([
+    const tasks: Promise<unknown>[] = [
       withTimeout(fetchSearxng(q, nextSearxngCursor), perFetchMs, `searxng:${q.id}`),
       withTimeout(fetchHnAlgolia(q), perFetchMs, `hn:${q.id}`),
       withTimeout(fetchGithubTrending(q), perFetchMs, `gh:${q.id}`),
-    ]);
+    ];
+    // Tavily arm: only when the query is lang:zh AND the cycle gate is open. en queries never
+    // hit Tavily, which keeps the free-tier spend bounded.
+    if (q.lang === "zh" && tavilyEnabled) {
+      tasks.push(withTimeout(fetchTavily(q), perFetchMs, `tavily:${q.id}`));
+    }
+    const settled = await Promise.allSettled(tasks);
+    const searxngRes = settled[0] as PromiseSettledResult<Awaited<ReturnType<typeof fetchSearxng>>>;
+    const hnRes = settled[1] as PromiseSettledResult<Awaited<ReturnType<typeof fetchHnAlgolia>>>;
+    const ghRes = settled[2] as PromiseSettledResult<Awaited<ReturnType<typeof fetchGithubTrending>>>;
+    const tavilyRes = tasks.length === 4
+      ? (settled[3] as PromiseSettledResult<Awaited<ReturnType<typeof fetchTavily>>>)
+      : null;
     // SearXNG keeps its cursor across calls even on a per-query failure so a single dead
     // instance does not pin the worker to its neighbours for the rest of the run.
     if (searxngRes.status === "fulfilled") {
@@ -103,6 +127,11 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
       providers.github_trending += ghRes.value.candidates.length;
       fetched += ghRes.value.candidates.length;
       mergeDeduped(ghRes.value.candidates, seen, candidates);
+    }
+    if (tavilyRes && tavilyRes.status === "fulfilled" && !tavilyRes.value.skippedNoKey) {
+      providers.tavily += tavilyRes.value.candidates.length;
+      fetched += tavilyRes.value.candidates.length;
+      mergeDeduped(tavilyRes.value.candidates, seen, candidates);
     }
   }
   const deduped = candidates.length;
@@ -157,7 +186,7 @@ export async function fetchSearchQueries(opts: SearchFetchOpts = {}): Promise<Ru
     }
   }
 
-  await persistCursor(src.id, nextSearxngCursor);
+  await persistCursor(src.id, nextSearxngCursor, tavilyCycleN);
   return { queries: queries.length, fetched, deduped, scored, passed, skipped_model: skippedModel, upserted, providers };
 }
 
@@ -187,8 +216,8 @@ function mergeDeduped(batch: Candidate[], seen: Set<string>, out: Candidate[]): 
   }
 }
 
-async function persistCursor(sourceId: string, cursor: SearxngCursor): Promise<void> {
-  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: cursor } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
+async function persistCursor(sourceId: string, searxngCursor: SearxngCursor, tavilyCycleN: number): Promise<void> {
+  await sql`UPDATE sources SET cursor = ${sql.json({ searxng: searxngCursor, tavilyCycleN } as never)}, last_ok_at = COALESCE(last_ok_at, now()) WHERE id = ${sourceId}`;
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
