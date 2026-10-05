@@ -65,16 +65,16 @@ test("$comment string contains no raw 0x00-0x1F bytes — only JSON escape seque
   assert.deepEqual(raw, [], "$comment must not contain raw control bytes (FIX-R.3 root cause)");
 });
 
-test("queries array carries the expected shape and counts after FIX-J + FIX-R", () => {
+test("queries array carries the expected shape and counts after FIX-J + FIX-R + FIX-S-prompts", () => {
   const file = JSON.parse(readFileSync(FILE, "utf8")) as { queries: Array<{ id: string; lang: string }> };
   const search = file.queries.filter((q) => q.id.startsWith("search-"));
   const prompt = file.queries.filter((q) => q.id.startsWith("prompt-"));
   const zh = file.queries.filter((q) => q.lang === "zh");
   const en = file.queries.filter((q) => q.lang === "en");
   assert.equal(search.length, 18, "18 search-* queries (12 en + 4 zh added by FIX-J + 2 from FIX-F)");
-  assert.equal(prompt.length, 10, "10 prompt-* queries (5 categories × en/zh)");
-  assert.equal(zh.length, 9, "9 zh queries (4 search + 5 prompt — Tavily-armed target)");
-  assert.equal(en.length, 19, "19 en queries (14 search + 5 prompt)");
+  assert.equal(prompt.length, 30, "30 prompt-* queries (15 categories × en/zh — FIX-S-prompts: 5 base + 10 added)");
+  assert.equal(zh.length, 19, "19 zh queries (4 search + 15 prompt — Tavily + Brave armed target)");
+  assert.equal(en.length, 29, "29 en queries (14 search + 15 prompt)");
   const other = file.queries.filter((q) => !q.id.startsWith("search-") && !q.id.startsWith("prompt-"));
   assert.equal(other.length, 0, "every query id must start with search- or prompt-");
 });
