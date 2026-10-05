@@ -23,6 +23,7 @@ export const links: Route.LinksFunction = () => [
   { rel: "manifest", href: "/manifest.webmanifest" },
   { rel: "alternate", type: "application/rss+xml", title: `${SITE.name} — 精选`, href: "/feed.xml" },
   { rel: "alternate", type: "application/rss+xml", title: `${SITE.name} — 提示词合集`, href: "/feed/prompts.xml" },
+  { rel: "alternate", type: "application/rss+xml", title: `${SITE.name} — 代码提示词合集`, href: "/feed/code-prompts.xml" },
 ];
 
 interface SiteMeta {

@@ -12,6 +12,7 @@ import { textToHtml } from "../content/sanitize.ts";
 import { categoryCondition, listedCondition, selectedCondition, xView, type ItemRow } from "./items.ts";
 import { dailyUrl, itemUrl, promptUrl, siteUrl } from "./links.ts";
 import { PROMPT_CATEGORIES } from "@aihot/contracts/site";
+import { COPILOT_ASSET_KIND_LABELS, type CopilotAssetKind } from "@aihot/contracts/awesome-copilot";
 
 interface FeedMeta {
   id: string;
@@ -230,4 +231,53 @@ export async function promptFeed(): Promise<string> {
 
 export function isFeedCategory(v: string): v is PublicApiCategoryKey {
   return (PUBLIC_API_CATEGORY_KEYS as readonly string[]).includes(v);
+}
+
+const CODE_PROMPTS_PATH = "/feed/code-prompts.xml";
+const CODE_PROMPTS_TITLE = `${SITE.name} — 代码提示词合集`;
+const CODE_PROMPTS_DESCRIPTION = `${SITE.name} 代码提示词合集最近 50 条，按收录时间倒序；附原文出处与 ${SITE.name} 详情页。`;
+
+interface CopilotFeedRow {
+  id: string;
+  filename: string;
+  asset_kind: CopilotAssetKind;
+  repo_slug: string;
+  raw_url: string;
+  body_preview: string;
+  fetched_at: Date;
+}
+
+/**
+ * The code-prompts RSS: 50 most recent copilot_assets by fetched_at DESC. Each item links to the
+ * asset detail page; readers see kind chip + filename + description teaser inside the item body.
+ * The bodyPreview is what the publication reader shows on the listing card, kept short to fit a
+ * feed reader.
+ */
+export async function codePromptFeed(): Promise<string> {
+  const rows = await sql<CopilotFeedRow[]>`
+    SELECT (source_id || '::' || slug) AS id, filename, asset_kind, repo_slug, raw_url, body_preview, fetched_at
+      FROM copilot_assets
+      WHERE status = 'fetched' AND length(coalesce(body_md, '')) > 0
+      ORDER BY fetched_at DESC, source_id, slug
+      LIMIT 50`;
+  const items = rows.map((r) => {
+    const url = siteUrl(`/code-prompts/${encodeURIComponent(r.id)}`);
+    const kindLabel = COPILOT_ASSET_KIND_LABELS[r.asset_kind];
+    const title = r.filename;
+    const teaser = (r.body_preview ?? "").slice(0, 280);
+    const description = [
+      `<p><strong>类型</strong>：${escapeXml(kindLabel)} · <span class="mono">${escapeXml(r.repo_slug)}</span></p>`,
+      `<p>${escapeXml(teaser)}</p>`,
+      `<p>via ${escapeXml(SITE.name)} · <a href="${url}">${url}</a> · <a href="${escapeXml(r.raw_url)}">原始文件</a></p>`,
+    ].join("\n");
+    return `    <item>
+      <title>${cdata(title)}</title>
+      <link>${url}</link>
+      <description>${cdata(description)}</description>
+      <pubDate>${rfc822(r.fetched_at)}</pubDate>
+      <guid isPermaLink="false">codeprompt-${escapeXml(r.id)}</guid>
+      <author>${AUTHOR} (${escapeXml(r.repo_slug)})</author>
+    </item>`;
+  });
+  return channel({ title: CODE_PROMPTS_TITLE, description: CODE_PROMPTS_DESCRIPTION, homePath: "/code-prompts", selfPath: CODE_PROMPTS_PATH, ttl: 30 }, items);
 }

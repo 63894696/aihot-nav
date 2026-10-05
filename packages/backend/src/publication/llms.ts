@@ -35,6 +35,7 @@ export function llmsTxt(opts: { hasDailies: boolean; hasWeekly: boolean; hasMont
   lines.push(`- [全部动态 RSS](${u("/feed/all.xml")}): 最近 7 天公开动态，按真实发布时间倒序`);
   if (opts.hasDailies) lines.push(`- [${daily} RSS](${u("/feed/daily.xml")}): 每天 08:00 北京时间发布的${daily}，保留最近 30 期`);
   lines.push(`- [提示词合集 RSS](${u("/feed/prompts.xml")}): 最近 50 条提示词收录，按抓取时间倒序；附原文出处与详情页`);
+  lines.push(`- [代码提示词合集 RSS](${u("/feed/code-prompts.xml")}): 最近 50 条代码提示词模板（agent / instruction / skill），按收录时间倒序；附原文出处与详情页`);
   lines.push(`- [分类 RSS](${u(`/feed/category/${CATEGORY_KEYS[0]}.xml`)}): 按分类订阅精选，slug 支持 ${CATEGORY_KEYS.join(" / ")}`);
   lines.push(`- [公开 API v1 · 最近资讯](${u("/api/v1/items")}): JSON，支持 mode=selected/all、window=24h/7d、by=timeline/published、category、q、limit 与 cursor`);
   lines.push(`- [公开 API v1 · 当前热点](${u("/api/v1/hot-topics")}): 热点榜 Top 10；每条含从 1 开始的 rank，links.story 指向事件页`);
@@ -54,6 +55,7 @@ export function llmsTxt(opts: { hasDailies: boolean; hasWeekly: boolean; hasMont
   lines.push(`- [热点榜](${u("/hot")}): 过去 48 小时内被多个独立信源共同讨论的事件`);
   lines.push(`- [全部动态](${u("/all")}): 全部公开资讯，可按分类筛选`);
   lines.push(`- [提示词合集](${u("/prompts")}): 按能力维度归组的提示词列表，按收录时间倒序`);
+  lines.push(`- [代码提示词合集](${u("/code-prompts")}): 按 agent / instruction / skill 三类归组的代码提示词模板库，附原文仓库与正文详情`);
   if (opts.hasDailies) {
     lines.push(`- [${daily}](${u("/daily")}): 每日精编汇总`);
     lines.push(`- [${daily}存档](${u("/daily/archive")}): 历史${daily}归档`);

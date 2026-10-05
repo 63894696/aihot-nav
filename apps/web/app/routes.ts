@@ -32,6 +32,8 @@ export default [
   route("papers/:id", "routes/papers.$id.tsx"),
   route("prompts", "routes/prompts.tsx"),
   route("prompts/:id", "routes/prompts.$id.tsx"),
+  route("code-prompts", "routes/code-prompts.tsx"),
+  route("code-prompts/:id", "routes/code-prompts.$id.tsx"),
   route("feedback", "routes/feedback.tsx"),
   route("more", "routes/more.tsx"),
   route("starred", "routes/starred.tsx"),

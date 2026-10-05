@@ -50,6 +50,9 @@ export function staticSitemapEntries(opts: { now: Date | null; latestDaily: Date
     // The prompts column is a daily-cadence listing page with its own RSS channel — pin it the same
     // way /all and /hot are pinned (priority 0.8 sits between /hot at 0.9 and /topics at 0.7).
     { loc: "/prompts", lastmod: now, changefreq: "daily", priority: 0.8 },
+    // Code-prompts is the agent/instruction/skill template library — its own dedicated listing +
+    // RSS channel. Pinned at the same priority as /prompts.
+    { loc: "/code-prompts", lastmod: now, changefreq: "daily", priority: 0.8 },
     { loc: "/agent", lastmod: now, changefreq: "weekly", priority: 0.7 },
     { loc: "/about", changefreq: "monthly", priority: 0.5 },
     { loc: "/terms", changefreq: "monthly", priority: 0.4 },
@@ -111,6 +114,19 @@ async function build(): Promise<string> {
         AND category = ANY(ARRAY['writing','coding','image','video','audio','agent','research']::text[])
       ORDER BY captured_at DESC, id DESC LIMIT ${Math.max(0, MAX_URLS - entries.length)}`;
   for (const p of promptRows) entries.push({ loc: `/prompts/${p.id}`, lastmod: p.t, changefreq: "weekly", priority: 0.4 });
+
+  // Per-code-prompt detail pages (mirrors the prompts block above). The composite id
+  // `{source_id}::{slug}` is URL-encoded into the path component — slash inside slug stays as
+  // is because the slug is already a github-style path. Capped by the remaining budget.
+  const copilotRows = await sql<{ source_id: string; slug: string; t: Date }[]>`
+    SELECT source_id, slug, fetched_at AS t FROM copilot_assets
+      WHERE status IN ('fetched', 'indexed')
+        AND length(coalesce(body_md, '')) > 0
+      ORDER BY fetched_at DESC, id DESC LIMIT ${Math.max(0, MAX_URLS - entries.length)}`;
+  for (const r of copilotRows) {
+    const compositeId = `${r.source_id}::${r.slug}`;
+    entries.push({ loc: `/code-prompts/${encodeURIComponent(compositeId)}`, lastmod: r.t, changefreq: "weekly", priority: 0.4 });
+  }
 
   const body = entries
     .slice(0, MAX_URLS)
