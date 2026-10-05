@@ -597,21 +597,10 @@ export interface PromptCard {
  * accidentally surface prompt rows tagged with kinds we don't understand. */
 export type PromptSourceKind = "manual" | "searxng_search" | "rss" | "external";
 
-export interface PromptComment {
-  id: string;
-  authorName: string | null;
-  body: string;
-  postedAt: string | null;
-}
-
 export interface PromptDetail extends PromptCard {
   /** Full prompt text (not truncated). */
   promptText: string;
   originalPostId: string | null;
-  /** Comments from the original web page; empty when fetch failed. */
-  comments: PromptComment[];
-  /** 'ok' | 'failed' | 'timeout' — what happened the last time we tried to fetch comments. */
-  commentFetchStatus: "ok" | "failed" | "timeout";
 }
 
 export interface PromptsResponse {

@@ -24,7 +24,7 @@ const GROUPS: Array<{ title: string; rows: Row[] }> = [
     title: "内容",
     rows: [
       { to: "/topics", label: "主题索引", icon: <IconGrid size={18} /> },
-      { to: "/prompts", label: "提示词合集", icon: <IconPrompt size={18} /> },
+      { to: "/prompts", label: "通用提示词", icon: <IconPrompt size={18} /> },
       ...(FEATURES.leaderboard ? [{ to: "/leaderboard", label: "模型榜", icon: <IconChart size={18} /> }] : []),
       { to: "/agent", label: "Agent 接入", icon: <IconPlug size={18} /> },
     ],

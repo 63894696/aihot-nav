@@ -34,7 +34,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
     jsonLd: [
       breadcrumbLd([
         { name: SITE.name, path: "/" },
-        { name: "提示词合集", path: "/prompts" },
+        { name: "通用提示词", path: "/prompts" },
         { name: data.useCase ?? `提示词 #${data.id}`, path: `/prompts/${data.id}` },
       ]),
       {
@@ -53,12 +53,6 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 const CATEGORY_LABEL: Record<string, string> = PROMPT_CATEGORY_LABELS;
 
-const FETCH_STATUS_LABEL: Record<PromptDetail["commentFetchStatus"], string> = {
-  ok: "评论已收录",
-  failed: "评论抓取失败",
-  timeout: "评论抓取超时",
-};
-
 export default function PromptDetailPage() {
   const d = useLoaderData<typeof loader>();
   const [copiedText, setCopiedText] = useState(false);
@@ -74,12 +68,6 @@ export default function PromptDetailPage() {
   }
 
   const catLabel = CATEGORY_LABEL[d.category] ?? d.category;
-  const sortedComments = [...d.comments].sort((a, b) => {
-    if (a.postedAt && b.postedAt) return a.postedAt.localeCompare(b.postedAt);
-    if (a.postedAt) return -1;
-    if (b.postedAt) return 1;
-    return 0;
-  });
 
   return (
     <ArticleLayout
@@ -173,29 +161,11 @@ export default function PromptDetailPage() {
       </section>
 
       <section className="card mt-4 scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[14px] font-semibold text-ink">原页评论</h2>
-          <span className="text-[11.5px] text-ink-4">{FETCH_STATUS_LABEL[d.commentFetchStatus]}</span>
-        </div>
-        {sortedComments.length === 0 ? (
-          <p className="mt-3 text-[13px] text-ink-4">
-            {d.commentFetchStatus === "ok"
-              ? "原帖暂无评论。"
-              : "本次未能拉取原帖评论 — 可能是限流 / 超时,稍后会再试。"}
-          </p>
-        ) : (
-          <ol className="mt-3 space-y-3.5 text-[13px] leading-[1.8] text-ink-2">
-            {sortedComments.map((c) => (
-              <li key={c.id} className="border-l-2 border-line-soft pl-3">
-                <div className="text-[11.5px] text-ink-4">
-                  {c.authorName ?? "匿名"} ·{" "}
-                  {c.postedAt ? <time dateTime={c.postedAt}>{beijingDate(c.postedAt)}</time> : "时间未知"}
-                </div>
-                <p className="mt-1 whitespace-pre-wrap">{c.body}</p>
-              </li>
-            ))}
-          </ol>
-        )}
+        <h2 className="text-[14px] font-semibold text-ink">使用说明</h2>
+        <p className="mt-3 text-[13px] leading-[1.8] text-ink-3">
+          复制全文后,按自己的场景替换占位变量(方括号 / 双花括号包裹的字段)再使用。
+          部分提示词依赖特定模型或工具(如 GPT-4 / Claude / Copilot),请根据实际情况调整。
+        </p>
       </section>
     </ArticleLayout>
   );

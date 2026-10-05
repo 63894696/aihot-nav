@@ -182,8 +182,8 @@ function promptPreview(text: string): string {
 }
 
 const PROMPTS_PATH = "/feed/prompts.xml";
-const PROMPTS_TITLE = `${SITE.name} — 提示词合集`;
-const PROMPTS_DESCRIPTION = `${SITE.name} 提示词合集最近 50 条，按收录时间倒序；附原文出处与 ${SITE.name} 详情页。`;
+const PROMPTS_TITLE = `${SITE.name} — 通用提示词`;
+const PROMPTS_DESCRIPTION = `${SITE.name} 通用提示词最近 50 条，按收录时间倒序；附原文出处与 ${SITE.name} 详情页。`;
 
 interface PromptFeedRow {
   id: number;

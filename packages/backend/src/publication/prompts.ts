@@ -108,15 +108,10 @@ export async function loadPromptDetail(id: string): Promise<PromptDetail | null>
   const card = readPromptMeta(row);
   if (!card) return null;
 
-  // 2026-10-05: source_comments fetcher removed (FIX-S-prompts-comments). The detail page UX path
-  // for an empty list + status='ok' renders "原帖暂无评论。" which matches production data (zero
-  // comments have ever been captured). Wire shape is stable across RSS / llms.txt / MCP.
   return {
     ...card,
     promptText: row.prompt_text,
     originalPostId: row.original_post_id,
-    comments: [],
-    commentFetchStatus: "ok",
   };
 }
 

@@ -48,14 +48,14 @@ function compatCategory(raw: string | null | undefined): string | null {
 
 export function meta() {
   return pageMeta({
-    title: "提示词合集",
+    title: "通用提示词",
     description: `${SITE.name} 整理的可复用提示词,带原始社区评论。`,
     path: "/prompts",
     image: "/og/pages/prompts.png",
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: `${SITE.name} 提示词合集`,
+      name: `${SITE.name} 通用提示词`,
       description: `${SITE.name} 整理的可复用提示词,带原始社区评论。`,
     },
   });
@@ -77,14 +77,14 @@ export default function PromptsPage() {
               从公开社区(Reddit / HN / 微信 / 公众号等)抓可复用提示词,过滤掉"看个人 / 看一次性"的例子,留下可改写复用的版本。
             </p>
             <p className="mt-2 text-[12px] leading-[1.7] text-ink-4">
-              每条提示词挂上原页评论作为用户反馈声音。请求频率与单源熔断已在前端 / 后端两侧限速,不会对原站造成压力。
+              抓取频率与单源熔断已在前端 / 后端两侧限速,不会对原站造成压力。
             </p>
           </AsideCard>
 
           <AsideCard title="使用注意">
             <ul className="space-y-1.5 text-[12.5px] text-ink-3">
               <li>· 提示词原作者归属于原社区条目,本栏目仅整理</li>
-              <li>· 点"详情"查看完整 promptText 与原页评论</li>
+              <li>· 点"详情"查看完整 promptText</li>
               <li>· 复制后请按自己的场景修改变量再使用</li>
             </ul>
           </AsideCard>
@@ -98,7 +98,7 @@ export default function PromptsPage() {
       }
     >
       <header className="mb-5">
-        <h1 className="text-[22px] font-semibold leading-tight text-ink">提示词合集</h1>
+        <h1 className="text-[22px] font-semibold leading-tight text-ink">通用提示词</h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">
           可复用提示词 · 最近 {data.windowDays} 天 · 共 {items.length} 条
         </p>
@@ -146,7 +146,7 @@ function EmptyState({ searchParams }: { searchParams: URLSearchParams }) {
   return (
     <div className="card flex flex-col items-center gap-2.5 px-6 py-14 text-center">
       <IconDoc size={28} className="text-ink-4" />
-      <div className="text-[15px] font-semibold text-ink-2">{filterActive ? "当前筛选下暂无提示词" : "提示词合集正在补足中"}</div>
+      <div className="text-[15px] font-semibold text-ink-2">{filterActive ? "当前筛选下暂无提示词" : "通用提示词正在补足中"}</div>
       <p className="max-w-md text-[12.5px] leading-relaxed text-ink-4">
         {filterActive
           ? "可换一个类别或扩大时间窗试试。提示词还在累积阶段,新条目按需补入。"

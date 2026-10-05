@@ -23,7 +23,7 @@ export const SIDEBAR: Array<{ title: string; items: NavItem[] }> = [
       { to: "/", label: "精选", icon: IconBolt, end: true },
       { to: "/new", label: "每日新品", icon: IconDoc },
       { to: "/tools", label: withSubject("工具导航"), icon: IconGrid },
-      { to: "/prompts", label: "提示词合集", icon: IconPrompt },
+      { to: "/prompts", label: "通用提示词", icon: IconPrompt },
       { to: "/code-prompts", label: "代码提示词", icon: IconPrompt },
       { to: "/papers", label: "论文解读", icon: IconDoc },
       { to: "/all", label: "交叉发现", icon: IconList },
