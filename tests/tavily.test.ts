@@ -136,3 +136,6 @@ test("candidate with non-http url is dropped, identityKey derived via identityKe
     await provider.close();
   }
 });
+
+// Note: sanitizeJsonControlChars has its own DB-free test file (tests/tavily-sanitize.test.ts)
+// so the pure-function checks can run without a postgres instance.

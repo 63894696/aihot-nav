@@ -124,7 +124,16 @@ export async function fetchTavily(
         }
         let json: TavilyResponse;
         try {
-          json = JSON.parse(res.text()) as TavilyResponse;
+          // Tavily error responses sometimes include stack-trace-style multi-line messages in
+          // `detail` fields where the raw newline character (U+000A) is NOT escaped inside the
+          // JSON string literal. JSON.parse rejects this with "Bad control character in string
+          // literal at position N". The fix: walk the string and escape any raw control char
+          // (0x00-0x1F) that appears inside a string value. This is safe because:
+          //   - we never re-emit the parsed bytes back to Tavily;
+          //   - control chars inside JSON string literals are not spec-allowed anyway, so the
+          //     response was already malformed from the spec perspective.
+          // A normal 200 response has no control chars in its strings, so this is a no-op there.
+          json = JSON.parse(sanitizeJsonControlChars(res.text())) as TavilyResponse;
         } catch (e) {
           throw new ProviderRejectedError(`tavily non-JSON: ${String(e).slice(0, 80)}`, res.status, false);
         }
@@ -194,4 +203,58 @@ function parseTavilyDate(v: string | null | undefined): Date | null {
   if (!v) return null;
   const t = Date.parse(v);
   return Number.isFinite(t) ? new Date(t) : null;
+}
+
+/**
+ * Escape raw control characters (U+0000 - U+001F) that appear INSIDE JSON string literals.
+ *
+ * Why: Tavily's error responses (HTTP 4xx/5xx with JSON body) sometimes include stack-trace-style
+ * detail strings where the newline is a literal byte (0x0A), not the two-char escape sequence
+ * `\\n`. JSON.parse rejects this with `Bad control character in string literal at position N`.
+ * Walking the bytes and escaping control chars only when we're inside a string (track via the
+ * `inString` flag, honoring `\\` escapes so we don't mangle an escaped backslash) makes the
+ * response parseable. A well-formed response has no raw control chars inside strings, so the
+ * walker is a no-op there.
+ *
+ * Exported only for testing.
+ */
+export function sanitizeJsonControlChars(text: string): string {
+  let out = "";
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escape) {
+        // Previous char was a backslash inside a string — pass through verbatim.
+        out += ch;
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        out += ch;
+        escape = true;
+        continue;
+      }
+      const code = ch.charCodeAt(0);
+      if (code < 0x20) {
+        // Raw control char inside a string. Replace with the literal two-char escape sequence.
+        switch (code) {
+          case 0x08: out += "\\b"; break;
+          case 0x09: out += "\\t"; break;
+          case 0x0a: out += "\\n"; break;
+          case 0x0c: out += "\\f"; break;
+          case 0x0d: out += "\\r"; break;
+          default: out += "\\u" + code.toString(16).padStart(4, "0"); break;
+        }
+        continue;
+      }
+      if (ch === '"') inString = false;
+      out += ch;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    out += ch;
+  }
+  return out;
 }
