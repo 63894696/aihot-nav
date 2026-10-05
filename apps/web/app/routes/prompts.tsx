@@ -138,16 +138,25 @@ export default function PromptsPage() {
 
 function EmptyState({ searchParams }: { searchParams: URLSearchParams }) {
   const resetHref = `/prompts${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+  // When no filter is active and the table is still empty, the cause is upstream (model /
+  // SearXNG), not the visitor's filter choice — explain that instead of asking them to clear a
+  // filter they never set. The "一切重门" CTA stays in the filter-leak path because there it
+  // would actually help.
+  const filterActive = searchParams.has("category") || searchParams.has("windowDays");
   return (
     <div className="card flex flex-col items-center gap-2.5 px-6 py-14 text-center">
       <IconDoc size={28} className="text-ink-4" />
-      <div className="text-[15px] font-semibold text-ink-2">当前筛选下暂无提示词</div>
+      <div className="text-[15px] font-semibold text-ink-2">{filterActive ? "当前筛选下暂无提示词" : "提示词合集正在补足中"}</div>
       <p className="max-w-md text-[12.5px] leading-relaxed text-ink-4">
-        可换一个类别或扩大时间窗试试。提示词还在累积阶段,新条目按需补入。
+        {filterActive
+          ? "可换一个类别或扩大时间窗试试。提示词还在累积阶段,新条目按需补入。"
+          : "提示词来自公开信源的实时抽取,需要模型配合信源同时正常。当前模型或信源若不可用,栏目会持续为空 — 后续恢复后无需操作,新条目会按需补入。"}
       </p>
-      <Link to={resetHref} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-medium text-accent hover:underline">
-        清除筛选条件
-      </Link>
+      {filterActive && (
+        <Link to={resetHref} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-medium text-accent hover:underline">
+          清除筛选条件
+        </Link>
+      )}
     </div>
   );
 }

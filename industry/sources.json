@@ -1,5 +1,5 @@
 {
-  "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里增删改。字段说明见 docs/customize.md。W5-3 prompt 栏目信源：sources.json 配 'external' kind 留口子待人工推,主要信源由 industry/search-queries.json 里 prompt 类 query 走 SearXNG(与 W5-2 共用 10 个实例)补漏——见 docs/features/prompts-collection.md。",
+  "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里增删改。字段说明见 docs/customize.md。W5-3 prompt 栏目信源：sources.json 配 'external' kind 留口子待人工推,主要信源由 industry/search-queries.json 里 prompt 类 query 走 SearXNG(与 W5-2 共用 10 个实例)补漏——见 docs/features/prompts-collection.md。\n\nFIX-O（2026-10-05）interval_minutes 边界口径：DB 约束 sources_interval_minutes_check 现在是 BETWEEN 1 AND 43200（migration 0045 把上限从 1440 扩到 30 天）。下表是按信源类型建议的取值范围，写新信源时按此取：\n  - 高频媒体 / X 搜索 / SearXNG 虚拟源 / 官方 RSS:60-180(2-3 小时)——信息流最怕滞后\n  - 周报/月报型媒体 / 公众号:360-1440(6-24 小时)——节奏次快\n  - 社区提示词聚合站 / awesome-* 类:4320-20160(3 天-2 周)——策展型,改动稀疏,频繁抓反而浪费带宽还频繁重复\n  - 月度榜单 / 季度新闻信源:20160-43200(2-4 周)——最小可设是 43200(30 天)\n下界统一是 1——更密只会浪费配额、爬流量、给源站压力,没有信息量收益。",
   "sources": [
     {
       "id": "rss-openai-news",
