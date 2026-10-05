@@ -1,0 +1,34 @@
+-- W5-3 prompts collection cleanup: drop source_comments table.
+--
+-- Why this migration exists:
+-- - source_comments was introduced by 0042_prompts.sql as a sub-table to snapshot the original
+--   page's comments at prompt-capture time. Its writer (packages/backend/src/sources/comments.ts)
+--   has had ZERO production callers since ship — the only references are its own definition +
+--   test + docs.
+-- - VPS data confirms `source_comments=0 / prompt_items=14` — the writer has never produced a
+--   single row in production. The fetcher's 8s timeout + 5 req/min sliding window + 10-min
+--   cooldown was over-engineered for a path that was never wired up.
+-- - User 2026-10-05 directive: "如果后续获取的提示词都没有评论就去掉原页评论这一项抓取" —
+--   the precondition is satisfied (zero rows ever produced). Removal is in scope.
+--
+-- What we drop:
+--   source_comments (table + index + FK from prompt_items)
+--   fetchOriginalComments call site in publication/prompts.ts (returns [] + 'ok')
+--   packages/backend/src/sources/comments.ts + tests/source-comments.test.ts
+--   docs/features/prompts-collection.md §"原页评论抓取熔断策略" paragraph
+--
+-- What stays:
+--   - The /prompts detail page still renders a "原页评论" section header (UI stable)
+--   - When comments are empty + status='ok', the existing UX path shows "原帖暂无评论。"
+--     (FETCH_STATUS_LABEL['ok'] = "评论已收录" + empty list) — no front-end code touched.
+--   - PromptDetail type on contracts keeps `comments[]` + `commentFetchStatus` fields so the wire
+--     shape is stable across all clients (RSS, llms.txt, og prompts, MCP).
+--
+-- Safety on production rollout:
+--   - DROP TABLE ... IF EXISTS so re-runs don't fail.
+--   - Index dropped before table for cleanliness (Postgres auto-drops anyway, but explicit).
+--   - CASCADE on prompt_items FK (the referencing column does not exist anymore after drop,
+--     but explicit CASCADE makes the intent obvious).
+--   - No data migration: source_comments has 0 rows in production, so nothing to preserve.
+
+DROP TABLE IF EXISTS source_comments CASCADE;

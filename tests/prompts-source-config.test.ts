@@ -26,8 +26,7 @@
 //     future edit that re-enables external collection does not flood a host.
 //
 // Why no LLM / no DB: this is a wire-shape test on the on-disk JSON. The
-// pipeline (analyze / fetchOriginalComments / publication) is exercised by
-// smoke after a real run.
+// pipeline (analyze / publication) is exercised by smoke after a real run.
 
 import "./setup-noop.ts";
 import assert from "node:assert/strict";

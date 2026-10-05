@@ -1,10 +1,9 @@
 // /api/site/prompts — W5-3 prompt column public read layer.
 //
 // Why this file:
-// - The prompt column shows visitors a list of reusable prompts scraped from public posts, with
-//   the original page's comments surfaced as user-feedback. We deliberately keep this read layer
-//   independent of `articles`: a prompt is its own object (its own URL, its own use case, its own
-//   comment thread), not an article with a flag.
+// - The prompt column shows visitors a list of reusable prompts scraped from public posts. We
+//   deliberately keep this read layer independent of `articles`: a prompt is its own object (its
+//   own URL, its own use case), not an article with a flag.
 // - The cursor key is (captured_at, id) so pagination stays stable as new prompts arrive; window
 //   is symmetric with /papers and /topics so the UI can reuse filter chip components.
 //
@@ -15,8 +14,13 @@
 // - `readPromptMeta` is the only place we ever construct a PromptCard from a row — API callers
 //   go through `loadPrompts` / `loadPromptDetail`, which use it internally. This is the gate that
 //   keeps sensitive fields (article_id, internal ids) out of the wire.
+//
+// Comments:
+// - 2026-10-05: source_comments fetcher removed (zero production callers, zero rows produced).
+//   loadPromptDetail now returns `comments: []` + `commentFetchStatus: 'ok'` so the wire shape
+//   stays stable. The detail page UX path "原帖暂无评论。" stays the same.
 
-import type { PromptCard, PromptComment, PromptDetail, PromptCategory, PromptsQuery, PromptsResponse, PromptSourceKind } from "@aihot/contracts/site";
+import type { PromptCard, PromptDetail, PromptCategory, PromptsQuery, PromptsResponse, PromptSourceKind } from "@aihot/contracts/site";
 import { PROMPT_CATEGORIES } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
@@ -42,16 +46,6 @@ interface PromptRow {
   source_kind: string;
   captured_at: Date;
   updated_at: Date;
-}
-
-interface CommentRow {
-  id: number;
-  prompt_item_id: number;
-  author_name: string | null;
-  body: string;
-  posted_at: Date | null;
-  fetched_at: Date;
-  fetch_status: string;
 }
 
 export async function loadPrompts(q: PromptsQuery = {}): Promise<PromptsResponse> {
@@ -114,18 +108,15 @@ export async function loadPromptDetail(id: string): Promise<PromptDetail | null>
   const card = readPromptMeta(row);
   if (!card) return null;
 
-  const commentRows = await sql<CommentRow[]>`
-    SELECT id, prompt_item_id, author_name, body, posted_at, fetched_at, fetch_status
-    FROM source_comments
-    WHERE prompt_item_id = ${numericId}
-    ORDER BY posted_at ASC NULLS LAST, id ASC`;
-
+  // 2026-10-05: source_comments fetcher removed (FIX-S-prompts-comments). The detail page UX path
+  // for an empty list + status='ok' renders "原帖暂无评论。" which matches production data (zero
+  // comments have ever been captured). Wire shape is stable across RSS / llms.txt / MCP.
   return {
     ...card,
     promptText: row.prompt_text,
     originalPostId: row.original_post_id,
-    comments: commentRows.map(readComment),
-    commentFetchStatus: deriveCommentFetchStatus(commentRows),
+    comments: [],
+    commentFetchStatus: "ok",
   };
 }
 
@@ -152,22 +143,6 @@ export function readPromptMeta(row: PromptRow): PromptCard | null {
     originalUrl: row.original_url,
     capturedAt: row.captured_at.toISOString(),
   };
-}
-
-function readComment(row: CommentRow): PromptComment {
-  return {
-    id: row.id.toString(),
-    authorName: row.author_name,
-    body: row.body,
-    postedAt: row.posted_at ? row.posted_at.toISOString() : null,
-  };
-}
-
-function deriveCommentFetchStatus(rows: CommentRow[]): "ok" | "failed" | "timeout" {
-  if (rows.length === 0) return "failed";
-  const last = rows[rows.length - 1]!;
-  if (last.fetch_status === "ok" || last.fetch_status === "failed" || last.fetch_status === "timeout") return last.fetch_status;
-  return "failed";
 }
 
 function normaliseSourceKind(kind: string): PromptSourceKind {

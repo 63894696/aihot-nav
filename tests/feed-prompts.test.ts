@@ -23,7 +23,6 @@ import { promptFeed } from "@aihot/backend/publication/feeds";
 
 before(async () => {
   // Wipe any leftover rows from a previous run so we don't drag old categories into the test.
-  // source_comments cascades on DELETE prompt_items.
   await sql`DELETE FROM prompt_items WHERE community = 'feed-prompts-test'`;
 });
 
