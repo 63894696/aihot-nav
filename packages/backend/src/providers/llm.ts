@@ -5,6 +5,11 @@ import type { z } from "zod";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
 import { completeReceipt, paidRequest, ProviderRejectedError, rejectReceivedResponse } from "./receipts.ts";
+
+// Re-export so gate modules (prompt-score, search-score) can branch on ProviderRejectedError(retryable)
+// without taking a direct dependency on receipts.ts — keeps the wrapper's safety-valve contract visible
+// at the same import surface that defines chatJson / chatJsonWithFallback.
+export { ProviderRejectedError };
 import { sql } from "../db.ts";
 
 export interface ModelSpec {
@@ -79,6 +84,27 @@ export const MODELS: Record<string, ModelSpec> = {
     key: "qwen3-vl-flash", service: "dashscope", model: "qwen3-vl-flash",
     baseUrlEnv: "DASHSCOPE_BASE_URL", apiKeyEnv: "DASHSCOPE_API_KEY",
     extra: { enable_thinking: false }, jsonMode: false, vision: true,
+  },
+  // OpenRouter `:free` 池 — 多候选避免单一模型 429 锁定。命名规则:`openrouter-free-<model>`。
+  // 这些都是 OpenRouter 公共 `:free` 路由的固定别名,各自独立 quota;地区不可达或
+  // quota 临时耗尽时由 chatJsonWithFallback 跳到下一个候选(随机 shuffle 避免热点)。
+  "openrouter-free-gemini": {
+    key: "openrouter-free-gemini", service: "openrouter",
+    model: "google/gemini-2.0-flash-exp:free",
+    baseUrlEnv: "OPENROUTER_BASE_URL", apiKeyEnv: "OPENROUTER_API_KEY",
+    jsonMode: true,
+  },
+  "openrouter-free-llama": {
+    key: "openrouter-free-llama", service: "openrouter",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
+    baseUrlEnv: "OPENROUTER_BASE_URL", apiKeyEnv: "OPENROUTER_API_KEY",
+    jsonMode: true,
+  },
+  "openrouter-free-qwen": {
+    key: "openrouter-free-qwen", service: "openrouter",
+    model: "qwen/qwen-2.5-72b-instruct:free",
+    baseUrlEnv: "OPENROUTER_BASE_URL", apiKeyEnv: "OPENROUTER_API_KEY",
+    jsonMode: true,
   },
 };
 
@@ -232,6 +258,84 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     throw new ModelOutputError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${String(error).slice(0, 300)}`);
   }
   return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: response.usage ?? null };
+}
+
+/** Whether a failure on one model should make chatJsonWithFallback try the next candidate.
+ *  - ProviderRejectedError(retryable=true): provider clearly didn't accept the request (429/5xx or
+ *    connection refused / timeout). The same call against a different provider is the right move.
+ *  - Error message matching the existing safety-valve regex: model is unavailable (disabled / not
+ *    configured / budget exhausted) and the next candidate might still be reachable.
+ *  - ModelOutputError (parse / schema failure): the model could answer but the answer was unusable;
+ *    switching models on a content-shape problem usually wastes calls without buying anything, so we
+ *    do NOT fall back on it.
+ */
+function isFallbackTrigger(err: unknown): boolean {
+  if (err instanceof ProviderRejectedError) return err.retryable;
+  const msg = (err as Error | undefined)?.message ?? "";
+  return /disabled|not configured|budget/i.test(msg);
+}
+
+export interface ChatJsonWithFallbackOptions<S extends z.ZodType> extends Omit<ChatJsonOptions<S>, "model"> {
+  /** Primary model key (always tried first; the same string `chatJson` would accept). */
+  model: string;
+  /** Fallback model keys, tried in random order after the primary fails. Empty = single attempt. */
+  fallbacks: string[];
+}
+
+export interface ChatJsonWithFallbackResult<T> {
+  data: T;
+  receiptId: number;
+  reused: boolean;
+  /** The model key that actually produced the result. */
+  model: string;
+  /** One entry per attempt (primary first, then fallbacks in the order tried). Each failed attempt
+   *  carries the error message that caused the wrapper to move on; the successful attempt has none. */
+  attempts: Array<{ model: string; error?: string }>;
+  usage: Record<string, unknown> | null;
+}
+
+/** Fisher-Yates (partial): shuffle only the first k positions of an array; deterministic seed omitted
+ *  — every call independently permutes, which is what we want for "avoid hammering one fallback". */
+function shuffleFirst<T>(arr: T[], k: number): T[] {
+  const n = Math.min(k, arr.length);
+  const out = arr.slice();
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (out.length - i));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/** chatJson wrapped with a fallback chain. Each attempt is a real chatJson call — it still goes
+ *  through paidRequest (its own receipt row + its own budget counter) per AGENTS.md "付费请求都经过回执
+ *  和预算熔断, 不要绕开". When every candidate has failed with a fallback-triggering error, the LAST
+ *  error is rethrown; callers can decide whether to surface it (chatJsonWithFallback lets a worker
+ *  log "tried 3 candidates, all rejected" instead of a silent safety-valve skip). */
+export async function chatJsonWithFallback<S extends z.ZodType>(
+  opts: ChatJsonWithFallbackOptions<S>,
+): Promise<ChatJsonWithFallbackResult<z.infer<S>>> {
+  const order = [opts.model, ...shuffleFirst(opts.fallbacks, opts.fallbacks.length)];
+  const attempts: Array<{ model: string; error?: string }> = [];
+  let lastError: unknown;
+  for (const candidate of order) {
+    try {
+      const res = await chatJson<S>({ ...opts, model: candidate } as ChatJsonOptions<S>);
+      attempts.push({ model: candidate });
+      return {
+        data: res.data,
+        receiptId: res.receiptId,
+        reused: res.reused,
+        model: res.model,
+        attempts,
+        usage: res.usage,
+      };
+    } catch (err) {
+      attempts.push({ model: candidate, error: (err as Error)?.message?.slice(0, 200) });
+      lastError = err;
+      if (!isFallbackTrigger(err)) throw err;
+    }
+  }
+  throw lastError;
 }
 
 export async function markReceiptsCompleted(ids: number[]): Promise<void> {

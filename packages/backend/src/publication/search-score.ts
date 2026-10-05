@@ -13,7 +13,7 @@
 // - Other errors (network, parse) DO throw — they are real failures that the worker should log.
 
 import { z } from "zod";
-import { chatJson } from "../providers/llm.ts";
+import { chatJsonWithFallback, ProviderRejectedError } from "../providers/llm.ts";
 import { modelFor } from "../editorial/models.ts";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import type { Candidate } from "../sources/types.ts";
@@ -70,8 +70,9 @@ export async function scoreSearch(c: Candidate): Promise<ScoreSearchResult> {
     return { passed: false, score: null, reason: `modelFor(score) failed: ${(err as Error).message.slice(0, 120)}` };
   }
   try {
-    const res = await chatJson({
+    const res = await chatJsonWithFallback({
       model,
+      fallbacks: ["openrouter-free-gemini", "openrouter-free-llama", "openrouter-free-qwen"],
       purpose: "score_search",
       subject: `search:${input.provider}:${input.url}`,
       promptVersion: PROMPT_VERSION,
@@ -83,11 +84,22 @@ export async function scoreSearch(c: Candidate): Promise<ScoreSearchResult> {
       timeoutMs: 120_000,
     });
     const score = res.data.attentionScore;
-    return { passed: score >= SEARCH_SCORE_THRESHOLD, score, reason: score >= SEARCH_SCORE_THRESHOLD ? "ok" : `below ${SEARCH_SCORE_THRESHOLD}` };
+    return {
+      passed: score >= SEARCH_SCORE_THRESHOLD,
+      score,
+      reason: score >= SEARCH_SCORE_THRESHOLD
+        ? (res.attempts.length === 1 ? "ok" : `ok (fallback: ${res.model}, ${res.attempts.length} tried)`)
+        : `below ${SEARCH_SCORE_THRESHOLD}`,
+    };
   } catch (err) {
     const msg = (err as Error).message;
     if (/disabled|not configured|budget/i.test(msg)) {
       return { passed: false, score: null, reason: msg.slice(0, 160) };
+    }
+    // chatJsonWithFallback rethrows the last ProviderRejectedError(retryable=true) when every
+    // candidate (primary + fallbacks) is unavailable — same safety-valve contract as scorePrompt.
+    if (err instanceof ProviderRejectedError && err.retryable) {
+      return { passed: false, score: null, reason: `all models rejected (retryable): ${msg.slice(0, 120)}` };
     }
     throw err;
   }

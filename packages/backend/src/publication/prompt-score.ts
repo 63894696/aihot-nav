@@ -17,7 +17,7 @@
 // - Other errors (network, parse) DO throw — they are real failures that the worker should log.
 
 import { z } from "zod";
-import { chatJson } from "../providers/llm.ts";
+import { chatJson, chatJsonWithFallback, ProviderRejectedError } from "../providers/llm.ts";
 import { modelFor } from "../editorial/models.ts";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import type { Candidate } from "../sources/types.ts";
@@ -90,8 +90,9 @@ export async function scorePrompt(c: Candidate): Promise<ScorePromptResult> {
     return { extracted: false, result: null, reason: `modelFor(score) failed: ${(err as Error).message.slice(0, 120)}` };
   }
   try {
-    const res = await chatJson({
+    const res = await chatJsonWithFallback({
       model,
+      fallbacks: ["openrouter-free-gemini", "openrouter-free-llama", "openrouter-free-qwen"],
       purpose: "score_prompt",
       subject: `prompt:${input.provider}:${input.url}`,
       promptVersion: PROMPT_VERSION,
@@ -116,12 +117,20 @@ export async function scorePrompt(c: Candidate): Promise<ScorePromptResult> {
         useCase: data.useCase?.trim() ? data.useCase.trim() : null,
         category: data.category,
       },
-      reason: "ok",
+      // When the primary failed and a fallback answered, surface the route so the worker log shows
+      // which candidate picked up the slack. The regular "ok" reason is preserved when primary works.
+      reason: res.attempts.length === 1 ? "ok" : `ok (fallback: ${res.model}, ${res.attempts.length} tried)`,
     };
   } catch (err) {
     const msg = (err as Error).message;
     if (/disabled|not configured|budget/i.test(msg)) {
       return { extracted: false, result: null, reason: msg.slice(0, 160) };
+    }
+    // chatJsonWithFallback rethrows the last ProviderRejectedError(retryable=true) when every
+    // candidate (primary + fallbacks) is unavailable. Treat it as a safety-valve skip — the worker
+    // should drop the candidate rather than retry the whole job.
+    if (err instanceof ProviderRejectedError && err.retryable) {
+      return { extracted: false, result: null, reason: `all models rejected (retryable): ${msg.slice(0, 120)}` };
     }
     throw err;
   }
