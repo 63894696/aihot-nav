@@ -98,7 +98,7 @@ test("loadQueries: the prefix filter keeps prompt-* out of the search pipeline a
   const all = file.queries;
   const search = all.filter((q) => q.id.startsWith("search-"));
   const prompt = all.filter((q) => q.id.startsWith("prompt-"));
-  assert.equal(search.length, 12, "search-queries.json carries exactly 12 search-* queries (the v0.2.1-#7 rename)");
+  assert.equal(search.length, 18, "search-queries.json carries exactly 18 search-* queries (W5-3 FIX-J added 4 lang:zh)");
   assert.equal(prompt.length, 10, "search-queries.json carries exactly 10 prompt-* queries (5 categories × en/zh)");
   // Mutual exclusion: an id with the wrong prefix is rejected by the worker, so a typo like
   // "promp-writing-en" must NOT enter either pipeline. This is what stops future schema drift
