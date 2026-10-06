@@ -151,7 +151,12 @@ export function registerSite(app: FastifyInstance) {
   app.get("/api/site/discover", siteHandler(async (req, reply) => {
     const q = looseQuery(req);
     const category = q.category?.trim() ? q.category.trim().slice(0, 60) : null;
-    const data = await loadDiscover({ category });
+    // FIX-V — /all forwards ?channel=firstParty so the discovery endpoint can echo it back as
+    // channelLabel and the UI can prefix the section heading ("一手 · 工具·提示词·论文 三栏速览").
+    // Unknown channel keys fall through to "all" inside loadDiscover (which suppresses "all" so
+    // the wire never carries a noisy "全部" prefix).
+    const channel = q.channel?.trim() ? q.channel.trim().slice(0, 60) : null;
+    const data = await loadDiscover({ category, channel });
     const { generatedAt: _, ...content } = data;
     return sendJsonWithEtag(req, reply, data, { etagPrefix: "discover", cacheControl: "public, max-age=60, s-maxage=60", etagOf: content });
   }));
