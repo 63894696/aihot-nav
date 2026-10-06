@@ -138,7 +138,7 @@ function toPaperCard(row: PaperRow, mode: string): string {
     "abstract_en: |",
     ...row.abstract_en.split(/\r?\n/).map((l) => `  ${l}`),
     "abstract_zh: |",
-    ...((row.abstract_zh ?? "(未翻译)").split(/\r?\n/).map((l) => `  ${l}`))),
+    ...(row.abstract_zh ?? "(未翻译)").split(/\r?\n/).map((l) => `  ${l}`),
   ].join("\n");
   return header;
 }
