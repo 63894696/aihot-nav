@@ -5,6 +5,7 @@
 import type { PaperDetail, PaperFilters, PaperStatus, PaperSummary, PapersQuery, PapersResponse } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
+import { loadPaperCommentaryHtml } from "./papers-commentary.ts";
 
 const DEFAULT_LIMIT = 24;
 const MIN_LIMIT = 1;
@@ -115,6 +116,10 @@ interface PaperDetailRow extends PaperRow {
   fetched_at: Date;
   translated_at: Date | null;
   summary_model: string | null;
+  commentary_status: "pending" | "published" | "skipped" | null;
+  commentary_md_url: string | null;
+  commentary_source: "chatgpt" | "perplexity" | "human" | "hybrid" | null;
+  skipped_reason: string | null;
 }
 
 export async function loadPaperDetail(arxivId: string): Promise<PaperDetail | null> {
@@ -124,7 +129,8 @@ export async function loadPaperDetail(arxivId: string): Promise<PaperDetail | nu
            published_at, abs_url, status,
            abstract_en AS abstract_en_full,
            abstract_zh AS abstract_zh_full,
-           key_points, pdf_url, fetched_at, translated_at, summary_model
+           key_points, pdf_url, fetched_at, translated_at, summary_model,
+           commentary_status, commentary_md_url, commentary_source, skipped_reason
     FROM papers WHERE arxiv_id = ${arxivId}`;
   if (!row) return null;
   const MAX_AUTHORS = 6;
@@ -147,6 +153,13 @@ export async function loadPaperDetail(arxivId: string): Promise<PaperDetail | nu
     fetchedAt: row.fetched_at.toISOString(),
     translatedAt: row.translated_at?.toISOString() ?? null,
     summaryModel: row.summary_model,
+    commentaryStatus: row.commentary_status,
+    commentaryMdUrl: row.commentary_md_url,
+    commentarySource: row.commentary_source,
+    commentarySkippedReason: row.skipped_reason,
+    commentaryHtml: row.commentary_status === "published"
+      ? (loadPaperCommentaryHtml(row.commentary_md_url) ?? { html: "", empty: true })
+      : null,
   };
 }
 

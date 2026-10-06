@@ -8,7 +8,7 @@
 // endpoint stays parallel to the detail (GET /api/site/papers/:id/siblings) so #5 can extend it
 // without breaking callers.
 import { SITE } from "@aihot/industry/site";
-import type { PaperDetail, PaperSummary } from "@aihot/contracts/site";
+import type { PaperDetail, PaperCommentarySource, PaperSummary } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/papers.$id";
 import { useState } from "react";
@@ -227,6 +227,8 @@ export default function PaperDetailPage() {
         )}
       </section>
 
+      <CommentarySection d={d} />
+
       {d.abstractEnFull && d.abstractZhFull && d.abstractEnFull !== d.abstractZhFull && (
         <section className="card mt-4 scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6">
           <details>
@@ -292,4 +294,91 @@ function statusTone(s: PaperDetail["status"]): string {
     default:
       return "text-ink-4 bg-bg-muted";
   }
+}
+
+const COMMENTARY_SOURCE_LABEL: Record<PaperCommentarySource, string> = {
+  chatgpt: "ChatGPT",
+  perplexity: "Perplexity",
+  human: "纯人工",
+  hybrid: "人机协作",
+};
+
+/** Link to the raw commentary markdown in the public repo. Hard-coded to keep the
+ *  front-end independent of `industry/site.ts` (which doesn't expose a repoPath field).
+ *  The .md path is repo-relative — papers.commentary_md_url starts with "docs/commentary/"
+ *  so we just concatenate. If we ever mirror to a non-babelspan fork, this is the only
+ *  line that needs to change. */
+const COMMENTARY_REPO_OWNER = "babelspan";
+const COMMENTARY_REPO_NAME = "aihot-nav";
+const COMMENTARY_REPO_BRANCH = "main";
+function COMMENTARY_GITHUB_URL(mdPath: string): string {
+  return `https://github.com/${COMMENTARY_REPO_OWNER}/${COMMENTARY_REPO_NAME}/blob/${COMMENTARY_REPO_BRANCH}/${mdPath}`;
+}
+
+function commentarySubhead(source: PaperCommentarySource | null): string {
+  if (!source) return "解读";
+  return `解读 · 来源: ${COMMENTARY_SOURCE_LABEL[source]}`;
+}
+
+/** 3-state renderer for the "解读" section. The publication layer only populates
+ *  commentaryHtml when commentaryStatus === "published", so a missing field means we
+ *  are in the pending / null branch — render the placeholder, not the section header
+ *  twice. Skipped papers get a one-line audit-trail note so readers know the section
+ *  was intentionally opted out (vs. just not yet authored). */
+function CommentarySection({ d }: { d: PaperDetail }) {
+  // pending / null — not yet attempted. Keep the heading visible so readers know the
+  // section exists, but show the "尚无解读" placeholder.
+  if (d.commentaryStatus !== "published" && d.commentaryStatus !== "skipped") {
+    return (
+      <section className="card mt-4 scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6">
+        <h2 className="text-[14px] font-semibold text-ink">解读</h2>
+        <p className="mt-3 text-[13px] leading-[1.85] text-ink-4">尚无解读。</p>
+      </section>
+    );
+  }
+
+  // skipped — explicit opt-out. One-line grey note, no heading soup.
+  if (d.commentaryStatus === "skipped") {
+    return (
+      <section className="card mt-4 scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6">
+        <h2 className="text-[14px] font-semibold text-ink">解读</h2>
+        <p className="mt-3 text-[12.5px] leading-[1.8] text-ink-4">
+          本篇暂无解读 — {d.commentarySkippedReason || "创作技巧不适配。"}
+        </p>
+      </section>
+    );
+  }
+
+  // published — render the pre-sanitised HTML from the publication layer. The source
+  // label sits in a small subhead under the section title.
+  const html = d.commentaryHtml?.html ?? "";
+  const empty = d.commentaryHtml?.empty ?? true;
+
+  return (
+    <section className="card mt-4 scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6">
+      <header className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[14px] font-semibold text-ink">{commentarySubhead(d.commentarySource)}</h2>
+        {d.commentaryMdUrl && (
+          <a
+            href={COMMENTARY_GITHUB_URL(d.commentaryMdUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11.5px] text-ink-4 hover:text-accent"
+          >
+            <IconExternal size={11} /> 在 GitHub 查看
+          </a>
+        )}
+      </header>
+      {empty ? (
+        <p className="mt-3 text-[13px] leading-[1.85] text-ink-4">
+          解读草稿已被标记为已发布,但仓库内的 <code className="mono">.md</code> 文件缺失或为空。请联系维护者补回。
+        </p>
+      ) : (
+        <div
+          className="commentary-body mt-3 space-y-3 text-[13.5px] leading-[1.85] text-ink-2"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      )}
+    </section>
+  );
 }

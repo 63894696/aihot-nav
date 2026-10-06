@@ -232,6 +232,15 @@ export interface PapersResponse {
   generatedAt: string;
 }
 
+/** /papers/$id "解读" section lifecycle. Published = render commentary_md_url; skipped = render
+ *  skippedReason; pending / null = render placeholder. Drives the 3-state renderer in
+ *  apps/web/app/routes/papers.$id.tsx (see docs/commentary/README.md §5). */
+export type PaperCommentaryStatus = "pending" | "published" | "skipped";
+
+/** Author provenance for the commentary text. Surfaces in the detail-page subhead so readers
+ *  can tell human-written apart from LLM-collaborated. */
+export type PaperCommentarySource = "chatgpt" | "perplexity" | "human" | "hybrid";
+
 export interface PaperDetail extends PaperSummary {
   /** Full English abstract (no truncation). */
   abstractEnFull: string;
@@ -243,6 +252,22 @@ export interface PaperDetail extends PaperSummary {
   fetchedAt: string;
   translatedAt: string | null;
   summaryModel: string | null;
+  /** Lifecycle state of the human-authored commentary. null when the paper hasn't been
+   *  translated yet — translation must happen before commentary authoring starts. */
+  commentaryStatus: PaperCommentaryStatus | null;
+  /** Repo-relative path of the .md draft, e.g. "docs/commentary/2601.12345.md". Set only when
+   *  commentaryStatus === "published". */
+  commentaryMdUrl: string | null;
+  /** Authorship provenance of the published commentary. Set only when commentaryStatus === "published". */
+  commentarySource: PaperCommentarySource | null;
+  /** Short free-text reason recorded when commentaryStatus === "skipped". Audit trail — avoids
+   *  re-prompting next cycle. Null otherwise. */
+  commentarySkippedReason: string | null;
+  /** Pre-rendered commentary HTML (sanitised — only the inline subset the publication layer
+   *  understands). null unless commentaryStatus === "published". empty=true when the .md
+   *  file is missing on disk (DB says published but repo file vanished — front-end shows
+   *  a graceful "draft missing" note). */
+  commentaryHtml: { html: string; empty: boolean } | null;
 }
 
 export interface OutlineEntry {
