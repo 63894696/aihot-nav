@@ -719,6 +719,74 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-producthunt",
+      "name": "Product Hunt",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.producthunt.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 12
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "editorial",
+      "interval_minutes": 180,
+      "tags": [
+        "聚合站",
+        "新产品",
+        "媒体"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-therundown-ai",
+      "name": "The Rundown AI",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.therundown.ai/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "editorial",
+      "interval_minutes": 1440,
+      "tags": [
+        "个人",
+        "周刊",
+        "日报"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "rss-bens-bites",
+      "name": "Ben's Bites",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.bensbites.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "owner_entity_id": null,
+      "participation_mode": "editorial",
+      "interval_minutes": 1440,
+      "tags": [
+        "个人",
+        "周刊"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
     }
   ]
 }
