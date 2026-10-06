@@ -63,6 +63,10 @@ const STATUS_LABEL: Record<CopilotAssetDetail["status"], string> = {
 export default function CodePromptDetailPage() {
   const d = useLoaderData<typeof loader>();
   const [copied, setCopied] = useState(false);
+  // Description locale toggle (FIX-T, 2026-10-06). Defaults to "zh" when a zh translation
+  // exists (so zh readers see Chinese first), otherwise "en". The body is never translated —
+  // only title + frontmatter.description.
+  const [locale, setLocale] = useState<"zh" | "en">(initialLocale(d));
 
   async function copyBody() {
     try {
@@ -178,7 +182,20 @@ export default function CodePromptDetailPage() {
         </section>
       )}
 
-      <section className={`card scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6 ${frontmatterEntries.length > 0 ? "mt-4" : ""}`}>
+      {hasDescription(d) && (
+        <section className={`card scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6 ${frontmatterEntries.length > 0 ? "mt-4" : ""}`}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-[14px] font-semibold text-ink">简介</h2>
+            <LocaleToggle current={locale} available={availableLocales(d)} onChange={setLocale} />
+          </div>
+          <p className="mt-3 whitespace-pre-wrap text-[13px] leading-[1.85] text-ink-2">
+            {displayDescription(d, locale)}
+          </p>
+          {localeBadge(d, locale)}
+        </section>
+      )}
+
+      <section className={`card scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6 ${needsSpacing(d, frontmatterEntries.length) ? "mt-4" : ""}`}>
         <div className="flex items-center justify-between">
           <h2 className="text-[14px] font-semibold text-ink">正文</h2>
           <button
@@ -209,4 +226,83 @@ function formatFrontmatterValue(v: unknown): string {
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (Array.isArray(v)) return v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(", ");
   return JSON.stringify(v);
+}
+
+// FIX-T (2026-10-06) — translation helpers. The translation row is optional; we fall back to the
+// English frontmatter.description when the active locale has no row, and the toggle UI is hidden
+// when only one locale is present. Status "partial" / "failed" render a small badge so readers
+// know the text is machine-generated or stale.
+
+function enDescription(d: CopilotAssetDetail): string | null {
+  const fm = d.frontmatter as Record<string, unknown> | null | undefined;
+  const v = fm?.description;
+  return typeof v === "string" && v.trim().length > 0 ? v : null;
+}
+
+function hasDescription(d: CopilotAssetDetail): boolean {
+  return enDescription(d) !== null || (d.translations?.zh?.description ?? null) !== null;
+}
+
+function availableLocales(d: CopilotAssetDetail): Array<"zh" | "en"> {
+  const out: Array<"zh" | "en"> = [];
+  if (enDescription(d) !== null) out.push("en");
+  if (d.translations?.zh?.description != null) out.push("zh");
+  return out;
+}
+
+function initialLocale(d: CopilotAssetDetail): "zh" | "en" {
+  return d.translations?.zh?.description != null ? "zh" : "en";
+}
+
+function displayDescription(d: CopilotAssetDetail, locale: "zh" | "en"): string {
+  if (locale === "zh") return d.translations?.zh?.description ?? enDescription(d) ?? "";
+  return enDescription(d) ?? "";
+}
+
+function needsSpacing(d: CopilotAssetDetail, frontmatterCount: number): boolean {
+  return frontmatterCount > 0 || hasDescription(d);
+}
+
+const LOCALE_LABEL: Record<"zh" | "en", string> = { zh: "中文", en: "EN" };
+
+function LocaleToggle({ current, available, onChange }: { current: "zh" | "en"; available: Array<"zh" | "en">; onChange: (l: "zh" | "en") => void }) {
+  if (available.length < 2) return null;
+  return (
+    <div className="inline-flex rounded border border-ink-4/40 text-[11.5px]">
+      {available.map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => onChange(l)}
+          className={`px-2 py-px transition-colors ${
+            l === current ? "bg-accent text-white" : "text-ink-3 hover:text-accent"
+          }`}
+        >
+          {LOCALE_LABEL[l]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const TRANSLATION_STATUS_LABEL: Record<"translated" | "partial" | "failed", string> = {
+  translated: "已翻译",
+  partial: "部分翻译",
+  failed: "翻译失败",
+};
+
+function localeBadge(d: CopilotAssetDetail, locale: "zh" | "en"): React.ReactNode {
+  if (locale !== "zh") return null;
+  const row = d.translations?.zh;
+  if (!row) {
+    return (
+      <p className="mt-2 text-[11px] text-ink-4">暂无中文翻译,显示英文原文。</p>
+    );
+  }
+  return (
+    <p className="mt-2 text-[11px] text-ink-4">
+      机器翻译 · {TRANSLATION_STATUS_LABEL[row.status]}
+      {row.model ? ` · 模型 ${row.model}` : ""}
+    </p>
+  );
 }

@@ -67,6 +67,11 @@ export interface CopilotAssetDetail extends CopilotAssetSummary {
   blobSha: string | null;
   sizeBytes: number | null;
   status: "fetched" | "analyzing" | "indexed" | "failed";
+  /** Optional per-locale translations from `copilot_translations` (FIX-T, 2026-10-06).
+   *  Map shape: `{ [locale]: CopilotTranslation }`. Missing locales mean the worker has
+   *  not translated that locale yet (or marked it failed permanently). UI falls back to
+   *  the English frontmatter.description when a locale is absent. */
+  translations: Partial<Record<"zh" | "en", CopilotTranslation>>;
 }
 
 export interface CopilotAssetFilters {
@@ -86,4 +91,26 @@ export interface CopilotAssetsResponse {
   nextCursor: string | null;
   refreshAt: string | null;
   generatedAt: string;
+}
+
+/**
+ * One translated text bundle (zh / en) for an awesome-copilot asset.
+ *
+ * FIX-T (2026-10-06): the worker (`code-prompts.fetch_translations`) translates
+ * frontmatter->>'description' + a derived title (currently the filename without
+ * the .md suffix). `body_md` is intentionally NOT translated — see
+ * `database/migrations/0050_copilot_translations.sql` for the decision rationale.
+ *
+ * `fields` is reserved for future field-level translations (applyTo arrays,
+ * handoffs). Today it's always `{}`. Detail page renders the row as
+ * "title + description" only and never inspects `fields`.
+ */
+export interface CopilotTranslation {
+  locale: "zh" | "en";
+  title: string;
+  /** NULL when the upstream frontmatter has no description key (legacy assets). */
+  description: string | null;
+  fields: Record<string, unknown>;
+  model: string | null;
+  status: "translated" | "partial" | "failed";
 }

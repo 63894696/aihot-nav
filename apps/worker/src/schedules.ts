@@ -29,6 +29,7 @@ import { syncHuggingFaceDaily } from "./jobs/papers-hf-sync.ts";
 import { fetchSearchQueries } from "./jobs/search-fetch.ts";
 import { fetchPromptQueries } from "./jobs/prompt-fetch.ts";
 import { fetchAwesomeCopilotAssets } from "./jobs/awesome-copilot-fetch.ts";
+import { translateCodePromptsPending } from "./jobs/code-prompts-translate.ts";
 
 interface Scheduled {
   name: string;
@@ -117,6 +118,14 @@ export const SCHEDULES: Scheduled[] = [
   // so 4-per-hour × 3 sources = 12 tree calls + raw fetches stays well under budget. The job
   // self-throttles via blob_sha skip: unchanged files never re-download.
   { name: "awesome-copilot.fetch", cron: "*/15 * * * *", run: () => fetchAwesomeCopilotAssets() },
+  // FIX-T (2026-10-06): translate code-prompts (awesome-copilot) titles + descriptions into zh.
+  // Runs singleton — two parallel runs would double-call the LLM on the same asset. We model
+  // it on arxiv.translate (`*/2 * * * *`) but use `*/30` here because the source corpus is
+  // much smaller (~80 assets vs ~2k papers) and the upstream fetch only runs every 15 min —
+  // there is nothing new to translate most cycles, so the queue scan comes back empty and the
+  // LLM is not invoked at all. 30-min cadence keeps the cron noise low and still catches
+  // frontmatter shifts within an hour of awesome-copilot.fetch.
+  { name: "code-prompts.fetch_translations", cron: "*/30 * * * *", missed: "once", run: () => translateCodePromptsPending() },
 ];
 
 export async function registerSchedules(boss: PgBoss) {

@@ -12,9 +12,16 @@
 // Cursor pagination on (fetched_at, id) — both the `kind`-filtered and the unfiltered lists
 // share the same cursor shape (asset_kind is part of the fetch order so the cursor only
 // needs fetched_at + id, matching how papers.ts orders by published_at + arxiv_id).
+//
+// FIX-T (2026-10-06): detail page now carries zh translations from `copilot_translations`
+// (migration 0050). The list endpoint deliberately does NOT load translations — they are
+// per-card metadata only, and the list query is supposed to stay cheap. Detail endpoint
+// joins `copilot_assets` with `copilot_translations` filtered by locale to populate
+// `translations.zh`. When no row exists (worker hasn't run yet, or translation failed
+// permanently) the field is `null`; the UI shows the English frontmatter.description.
 import { sql } from "../db.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
-import type { CopilotAssetDetail, CopilotAssetKind, CopilotAssetSummary, CopilotAssetsQuery, CopilotAssetsResponse } from "@aihot/contracts/awesome-copilot";
+import type { CopilotAssetDetail, CopilotAssetKind, CopilotAssetSummary, CopilotAssetsQuery, CopilotAssetsResponse, CopilotTranslation } from "@aihot/contracts/awesome-copilot";
 import { COPILOT_ASSET_KINDS } from "@aihot/contracts/awesome-copilot";
 
 const DEFAULT_LIMIT = 30;
@@ -59,7 +66,7 @@ function toSummary(r: CopilotAssetRow): CopilotAssetSummary {
   };
 }
 
-function toDetail(r: CopilotAssetRow): CopilotAssetDetail {
+function toDetail(r: CopilotAssetRow, translations: Partial<Record<"zh" | "en", CopilotTranslation>> = {}): CopilotAssetDetail {
   return {
     ...toSummary(r),
     bodyMd: r.body_md,
@@ -68,6 +75,10 @@ function toDetail(r: CopilotAssetRow): CopilotAssetDetail {
     blobSha: r.blob_sha,
     sizeBytes: r.size_bytes,
     status: r.status,
+    // Translations are optional per-locale; null when the worker hasn't translated yet
+    // (or has marked the row 'failed' permanently). The UI falls back to the English
+    // frontmatter.description in that case.
+    translations,
   };
 }
 
@@ -147,19 +158,52 @@ export function parseCopilotAssetId(compositeId: string): { sourceId: string; sl
  * Detail view by composite id `{source_id}::{slug}`. The source_id segment must match one of
  * the configured external-awesome-copilot-{agents,instructions,skills} sources — unknown
  * source_ids return null so the API 404s rather than serving a row from a misnamed source.
+ *
+ * FIX-T: loads zh translation from `copilot_translations` in the same query path so the
+ * detail page has title_zh + description_zh ready. List endpoint deliberately skips this
+ * join — translations are detail-page metadata only.
  */
 export async function loadCopilotAssetDetail(compositeId: string): Promise<CopilotAssetDetail | null> {
   const parsed = parseCopilotAssetId(compositeId);
   if (!parsed) return null;
   const { sourceId, slug } = parsed;
 
-  const [row] = await sql<CopilotAssetRow[]>`
+  const rows = await sql<CopilotAssetRow[]>`
     SELECT id, source_id, asset_kind, slug, filename,
            frontmatter, body_md, raw_url, blob_sha, size_bytes,
            repo_slug, default_branch, status,
            fetched_at, updated_at
     FROM copilot_assets
-    WHERE source_id = ${sourceId} AND slug = ${slug}`;
+    WHERE source_id = ${sourceId} AND slug = ${slug}
+    LIMIT 1`;
+  const row = rows[0];
   if (!row) return null;
-  return toDetail(row);
+
+  // Load both zh + en translations (zh is the one we render; en is the no-op pass-through
+  // copy and may be useful for debug). PK lookup is O(1) on (asset_id, locale).
+  const tRows = await sql<CopilotTranslationRow[]>`
+    SELECT locale, title, description, fields, model, status
+    FROM copilot_translations
+    WHERE asset_id = ${row.id}`;
+  const translations: Partial<Record<"zh" | "en", CopilotTranslation>> = {};
+  for (const t of tRows) {
+    translations[t.locale] = {
+      locale: t.locale,
+      title: t.title,
+      description: t.description,
+      fields: t.fields ?? {},
+      model: t.model,
+      status: t.status,
+    };
+  }
+  return toDetail(row, translations);
+}
+
+interface CopilotTranslationRow {
+  locale: "zh" | "en";
+  title: string;
+  description: string | null;
+  fields: Record<string, unknown> | null;
+  model: string | null;
+  status: "translated" | "partial" | "failed";
 }

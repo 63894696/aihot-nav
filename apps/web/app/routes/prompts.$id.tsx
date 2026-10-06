@@ -164,7 +164,7 @@ export default function PromptDetailPage() {
         <h2 className="text-[14px] font-semibold text-ink">使用说明</h2>
         <p className="mt-3 text-[13px] leading-[1.8] text-ink-3">
           复制全文后,按自己的场景替换占位变量(方括号 / 双花括号包裹的字段)再使用。
-          部分提示词依赖特定模型或工具(如 GPT-4 / Claude / Copilot),请根据实际情况调整。
+          部分提示词依赖特定模型或工具(如 GPT / Claude / Copilot),请根据实际情况调整。
         </p>
       </section>
     </ArticleLayout>
