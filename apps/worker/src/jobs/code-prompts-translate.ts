@@ -1,13 +1,21 @@
 // code-prompts-translate — runs the LLM over copilot_assets rows whose frontmatter has
 // shifted since the last translation (or has no translation yet) and writes a zh
 // title + description into copilot_translations. Lifecycle: assets are taken from
-// copilot_assets where status='indexed'; translations are upserted into
+// copilot_assets where status IN ('fetched', 'indexed'); translations are upserted into
 // copilot_translations(asset_id, locale='zh') with a status column that mirrors
 // papers-translate (translated | partial | failed). The source_hash column is the
 // change-detection key — sha256(`${title}\n${description}`) of the upstream input —
 // so a re-translation happens only when the frontmatter changes (asset re-fetch
 // updates blob_sha, which usually means description changed; we recompute source_hash
 // each cycle and re-translate on mismatch).
+//
+// Status choice: the asset status CHECK is 'fetched' | 'analyzing' | 'indexed' | 'failed'.
+// In practice the dedicated awesome-copilot-fetch job writes frontmatter + body_md
+// synchronously inside the fetch pass and parks rows at 'fetched' — there is no
+// separate 'analyzing' worker in the loop yet (placeholder for a future per-asset
+// analysis pass like keyword extraction / trust scoring). We treat 'fetched' and
+// 'indexed' as the translation queue; rows stuck in 'analyzing' indicate a future
+// analyze worker is in-flight and we should not race it.
 //
 // FIX-T (2026-10-06): the user explicitly opted out of body/fields translation
 // (`body_md` is english markdown + code blocks; adding machine-translated noise
@@ -107,7 +115,7 @@ export async function translateCodePromptsPending(opts: { limit?: number; budget
     FROM copilot_assets a
     LEFT JOIN copilot_translations t
       ON t.asset_id = a.id AND t.locale = 'zh'
-    WHERE a.status = 'indexed'
+    WHERE a.status IN ('fetched', 'indexed')
       AND (t.asset_id IS NULL OR COALESCE(t.fail_count, 0) < ${MAX_RETRIES})
     ORDER BY a.fetched_at DESC
     LIMIT ${limit}`;
@@ -135,7 +143,7 @@ async function translateOne(p: PendingRow, model: string, fallbacks: string[]): 
   await sql`
     UPDATE copilot_assets
        SET status = 'translating', updated_at = now()
-     WHERE id = ${p.id} AND status = 'indexed'`;
+     WHERE id = ${p.id} AND status IN ('fetched', 'indexed')`;
   const hash = sourceHash(p.title_en, p.description_en);
 
   try {
@@ -173,8 +181,9 @@ async function translateOne(p: PendingRow, model: string, fallbacks: string[]): 
         source_hash = EXCLUDED.source_hash,
         updated_at  = now()`;
 
-    // Mark parent row back to 'indexed' so the queue scan picks it up cleanly
-    // on the next cycle if upstream shifts again.
+    // Mark parent row back to 'indexed' (the terminal "fully indexed" state — mirrors
+    // how the publication layer filters with status IN ('fetched','indexed'), and means
+    // a future independent analyze pass inserting 'analyzing' on top is not racy).
     await sql`
       UPDATE copilot_assets
          SET status = 'indexed', updated_at = now()
@@ -190,6 +199,10 @@ async function translateOne(p: PendingRow, model: string, fallbacks: string[]): 
     // do NOT bump fail_count (a model outage would otherwise burn 3 strikes in
     // 3 minutes and park the entire queue permanently).
     if (/disabled|not configured|budget/i.test(message) || (error instanceof ProviderRejectedError && !error.retryable)) {
+      // Safety-valve: model is permanently unavailable, not a transient bug.
+      // Park the row at 'indexed' (= "considered, can't translate yet") so the queue
+      // does not hammer a dead model every cycle. The next fetch (with updated blob_sha)
+      // can move it back to 'fetched' if upstream changes — at which point we'd retry.
       await sql`UPDATE copilot_assets SET status = 'indexed', updated_at = now() WHERE id = ${p.id} AND status = 'translating'`;
       return { assetId: p.id, status: "skipped", reason: message };
     }
