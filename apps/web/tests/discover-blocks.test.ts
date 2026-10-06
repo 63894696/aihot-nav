@@ -16,7 +16,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CATEGORY_KEYS, CATEGORY_LABELS } from "@aihot/contracts/taxonomy";
+import { CATEGORY_KEYS, CATEGORY_LABELS, CHANNEL_KEYS, CHANNEL_LABELS } from "@aihot/contracts/taxonomy";
 import { PROMPT_CATEGORIES } from "@aihot/contracts/site";
 
 interface FakeBlock {
@@ -29,6 +29,8 @@ interface FakeBlock {
 interface FakeDiscover {
   category: string | null;
   categoryLabel: string | null;
+  channel: string | null;
+  channelLabel: string | null;
   tools: FakeBlock;
   papers: FakeBlock;
   prompts: FakeBlock;
@@ -53,13 +55,18 @@ function blockFullPath(axis: "tools" | "papers" | "prompts", category: string | 
   return `/prompts${qs}`;
 }
 
-function fakeLoadDiscover(rawCategory: string | null): FakeDiscover {
+function fakeLoadDiscover(rawCategory: string | null, rawChannel: string | null = null): FakeDiscover {
   const category = rawCategory?.trim() || null;
   const validCategory = category && axisOf(category) ? category : null;
   // Mirror the loader's label lookup (CATEGORY_LABELS only holds capability keys; arXiv codes
   // and unknown strings yield null). The cast is safe because validCategory is always a
   // CategoryKey when axisOf returns non-null.
   const label = validCategory ? (CATEGORY_LABELS[validCategory as keyof typeof CATEGORY_LABELS] ?? null) : null;
+  const channel = rawChannel?.trim() || null;
+  const validChannel = channel && (CHANNEL_KEYS as readonly string[]).includes(channel) ? channel : null;
+  // Mirror loadDiscover's "all" suppression: when channel=all (or unknown), channelLabel is null
+  // so the UI doesn't prefix the section heading with "全部". Only named channels surface.
+  const channelLabel = validChannel && validChannel !== "all" ? CHANNEL_LABELS[validChannel as keyof typeof CHANNEL_LABELS] ?? null : null;
   const axis = validCategory ? axisOf(validCategory) : null;
   const mk = (a: "tools" | "papers" | "prompts"): FakeBlock => ({
     items: a === axis ? [{}] : [],
@@ -70,6 +77,8 @@ function fakeLoadDiscover(rawCategory: string | null): FakeDiscover {
   return {
     category: validCategory,
     categoryLabel: label,
+    channel: validChannel,
+    channelLabel,
     tools: mk("tools"),
     papers: mk("papers"),
     prompts: mk("prompts"),
@@ -94,6 +103,8 @@ test("unfiltered /all?category=null returns three empty blocks", () => {
   const r = fakeLoadDiscover(null);
   assert.equal(r.category, null);
   assert.equal(r.categoryLabel, null);
+  assert.equal(r.channel, null);
+  assert.equal(r.channelLabel, null);
   assert.equal(r.tools.appliedCategory, null);
   assert.equal(r.papers.appliedCategory, null);
   assert.equal(r.prompts.appliedCategory, null);

@@ -3,7 +3,7 @@
 // 换行业时：类别的 key 会出现在网址里（/all?category=…），上线后就不要再改；标签和名录可以随时增减。
 //
 // v0.2.1：分类从「事件型」改为「能力型」。事件型（模型/产品/融资/政策/论文/教程/观点…）描述「发生了什么」
-// 能力型（写作/编程/图像/视频/音频/Agent/数据/研究/效率/洞察/其他）描述「这个东西能干什么」。
+// 能力型（写作/编程/图像/视频/音频/Agent/数据/研究/效率/洞察/其它）描述「这个东西能干什么」。
 // 站点定位从「AI 行业资讯」改为「AI 工具导航站」，需要让一张工具卡 / 一个提示词 / 一篇论文
 // 都能在同一个能力维度上互相交叉发现。
 //
@@ -28,7 +28,7 @@ export const CATEGORIES = [
   { key: "research", label: "研究", section: "研究与应用", guide: "市场分析、竞品调研、用户访谈、文献综述、深度搜索（Perplexity/Genspark 等）" },
   { key: "productivity", label: "效率", section: "效率与办公", guide: "效率工具、会议转录、Notion AI、笔记、知识管理、办公自动化（不含纯写作）" },
   { key: "insight", label: "洞察", section: "研究与应用", guide: "教程、实践经验、使用技巧、人物观点、评论分析、趋势讨论 —— v0.2.0 的 tip + opinion + safety 合并到这里" },
-  { key: "other", label: "其他", section: "其他", guide: "兜底类别：v0.2.0 的 industry/funding/policy/ai-products 合并到这里，行业动态相关" },
+  { key: "other", label: "其它", section: "其它", guide: "兜底类别：v0.2.0 的 industry/funding/policy/ai-products 合并到这里，行业动态相关" },
 ] as const;
 
 /**
@@ -42,7 +42,7 @@ export const ITEM_TYPES = ["model_release", "product_launch", "tool_or_prompt", 
 /** 每篇资料的第一个标签必须是这些“分类标签”之一。 */
 export const CATEGORY_TAGS = [
   "产品更新", "模型发布", "论文/研究", "开源/仓库", "教程/实践", "现象/趋势", "大佬观点", "评测/基准", "安全/对齐", "行业动态", "政策/监管",
-  "非AI/通用工具", "其他",
+  "非AI/通用工具", "其它",
 ] as const;
 
 /** 可选的主题标签。 */

@@ -24,13 +24,23 @@ import { IconExternal } from "../../components/icons";
 type Props = { data: DiscoverResponse };
 
 export function DiscoveryBlocks({ data }: Props) {
-  // Hide the section entirely when no block has content AND no category filter is active. With
-  // no filter + empty all-three, the chip row already explains the empty /all list — repeating
-  // "暂无" three times under it would feel like noise.
+  // Hide the section entirely when no block has content AND no category/channel filter is active.
+  // With no filter + empty all-three, the chip row already explains the empty /all list — repeating
+  // "暂无" three times under it would feel like noise. A channel-only filter (e.g. "一手") still
+  // earns a render because the section heading carries the channel label and a user navigating
+  // to /all?channel=firstParty expects to see "一手 · 工具·提示词·论文 三栏速览" even when no items
+  // qualify for the preview window yet (the underlying three column feeds are themselves
+  // channel-filtered, so an empty teaser is informational, not an error).
   const allEmpty = data.tools.empty && data.papers.empty && data.prompts.empty;
-  if (allEmpty && !data.category) return null;
+  if (allEmpty && !data.category && !data.channelLabel) return null;
 
-  const headerLabel = data.categoryLabel ? `${data.categoryLabel} · 工具·提示词·论文 三栏速览` : "工具·提示词·论文 三栏速览";
+  // Section heading prefix: when the user lands via a channel filter (e.g. /all?channel=firstParty),
+  // there is no category to prefix with — channelLabel carries "一手" instead. categoryLabel wins
+  // when both are present so a /all?channel=firstParty&category=writing URL still reads "写作 · ..."
+  // (the category is the narrower filter). Mirrors how CategoryTabs emits (search-bar +
+// category) — the most specific axis the user typed wins.
+  const headingPrefix = data.categoryLabel ?? data.channelLabel;
+  const headerLabel = headingPrefix ? `${headingPrefix} · 工具·提示词·论文 三栏速览` : "工具·提示词·论文 三栏速览";
   return (
     <section aria-labelledby="discover-heading" className="mt-5 lg:mt-7">
       <div className="mb-3 flex items-baseline justify-between gap-3">
@@ -133,7 +143,7 @@ const PROMPT_CATEGORY_LABEL: Record<string, string> = {
   data: "数据",
   research: "研究",
   study: "学习",
-  other: "其他",
+  other: "其它",
 };
 
 function PromptsBlock({ block }: { block: DiscoverBlock<PromptCard> }) {

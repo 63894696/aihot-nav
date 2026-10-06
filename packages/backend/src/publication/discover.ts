@@ -29,7 +29,7 @@ import {
   PROMPT_CATEGORIES,
   type PromptCategory,
 } from "@aihot/contracts/site";
-import { CATEGORY_KEYS, CATEGORY_LABELS, type CategoryKey } from "@aihot/contracts/taxonomy";
+import { CATEGORY_KEYS, CATEGORY_LABELS, CHANNEL_KEYS, CHANNEL_LABELS, type CategoryKey, type ChannelKey } from "@aihot/contracts/taxonomy";
 import { loadPrompts } from "./prompts.ts";
 import { loadPapers } from "./papers.ts";
 import { loadTools } from "./tools.ts";
@@ -40,6 +40,12 @@ const DEFAULT_PROMPT_WINDOW_DAYS = 90;
 
 export interface DiscoverQuery {
   category?: string | null;
+  /** Channel filter forwarded from /all — only the "label" surfaces on the wire here; the
+   *  underlying loadTools/loadPapers/loadPrompts calls keep their default `channel: "all"`
+   *  semantics because the three-column discovery teaser is meant to stay unfiltered by channel.
+   *  We need it echoed back so the UI can prefix the section heading ("一手 · 工具·提示词·论文
+   *  三栏速览") when the user lands on /all?channel=firstParty without a category. */
+  channel?: string | null;
   /** Caller-provided clock; tests pin this for snapshot stability. */
   now?: Date;
 }
@@ -160,6 +166,16 @@ export async function loadDiscover(q: DiscoverQuery = {}): Promise<DiscoverRespo
   // still answers 200 with three blocks of unfiltered data rather than 4xx'ing the whole page.
   const category = rawCategory && axisOf(rawCategory) ? rawCategory : null;
   const label = category ? (CATEGORY_LABELS[category as CategoryKey] ?? null) : null;
+  // Channel echo: same boundary-validation philosophy — an unknown channel key is normalised
+  // to "all" so the wire always carries a valid ChannelKey (or null). The label maps "all" to
+  // "全部", which would render as a noisy prefix on the section heading; we suppress it by
+  // returning null when the resolved channel is "all" — the UI then falls back to categoryLabel
+  // and finally to the bare heading, matching the unfiltered landing behaviour.
+  const rawChannel = q.channel?.trim() || null;
+  const channel: ChannelKey | null = rawChannel && (CHANNEL_KEYS as readonly string[]).includes(rawChannel)
+    ? (rawChannel as ChannelKey)
+    : null;
+  const channelLabel: string | null = channel && channel !== "all" ? CHANNEL_LABELS[channel] : null;
   const [tools, papers, prompts] = await Promise.all([
     loadToolsBlock(category, now),
     loadPapersBlock(category, now),
@@ -168,6 +184,8 @@ export async function loadDiscover(q: DiscoverQuery = {}): Promise<DiscoverRespo
   return {
     category,
     categoryLabel: label,
+    channel,
+    channelLabel,
     tools,
     papers,
     prompts,

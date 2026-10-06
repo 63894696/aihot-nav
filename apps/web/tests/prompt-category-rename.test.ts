@@ -71,7 +71,7 @@ test("PromptCard CATEGORY_LABEL covers every PromptCategory", () => {
     data: "数据",
     research: "研究",
     study: "学习",
-    other: "其他",
+    other: "其它",
   };
   for (const k of PROMPT_CATEGORIES) {
     assert.ok(CATEGORY_LABEL[k], `PromptCard CATEGORY_LABEL missing key: ${k}`);

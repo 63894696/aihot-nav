@@ -36,7 +36,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       `/api/site/pool${queryString({ channel: channel === "all" ? null : channel, category, tag, q, tab, page: page > 1 ? page : null })}`,
       { signal: request.signal, busyRedirect: "/all/search-busy" },
     ),
-    fetch(`${url.origin}/api/site/discover${queryString({ category: discoverCategory })}`, { signal: request.signal })
+    fetch(`${url.origin}/api/site/discover${queryString({ category: discoverCategory, channel: channel === "all" ? null : channel })}`, { signal: request.signal })
       .then(async (r) => (r.ok ? ((await r.json()) as DiscoverResponse) : null))
       .catch(() => null),
   ]);

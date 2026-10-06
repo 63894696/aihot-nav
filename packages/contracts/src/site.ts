@@ -562,7 +562,7 @@ export const PROMPT_CATEGORY_LABELS: Record<PromptCategory, string> = {
   data: "数据",
   research: "调研",
   study: "学习",
-  other: "其他",
+  other: "其它",
 };
 
 /** One-line guide for the worker and the admin dropdown: how to bucket borderline rows. */
@@ -641,6 +641,14 @@ export interface DiscoverResponse {
   category: string | null;
   /** Truncated label for the chip ("写作 · 查看全部 → /prompts?category=writing"). */
   categoryLabel: string | null;
+  /** Echoed back unchanged. Lets the UI prefix the section heading with the channel
+   *  name when the user is filtering by channel ("一手" → "一手 · 工具·提示词·论文 三栏速览"). */
+  channel: ChannelKey | null;
+  /** Display label for the active channel, or null when channel=all. The UI uses
+   *  `channelLabel ?? categoryLabel` to prefix the section heading so a channel-only
+   *  filter (e.g. /all?channel=firstParty) shows the channel name even when no
+   *  category is selected — matches the "/all?category=写作" prefix behaviour. */
+  channelLabel: string | null;
   tools: DiscoverBlock<FeedItemSummary>;
   papers: DiscoverBlock<PaperSummary>;
   prompts: DiscoverBlock<PromptCard>;

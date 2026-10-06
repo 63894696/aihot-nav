@@ -34,7 +34,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   data: "数据",
   research: "研究",
   study: "学习",
-  other: "其他",
+  other: "其它",
 };
 
 const SOURCE_KIND_LABEL: Record<string, string> = {
