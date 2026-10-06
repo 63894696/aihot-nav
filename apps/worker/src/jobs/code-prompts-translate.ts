@@ -17,6 +17,13 @@
 // 'indexed' as the translation queue; rows stuck in 'analyzing' indicate a future
 // analyze worker is in-flight and we should not race it.
 //
+// Concurrency: the asset status enum has no 'translating' slot (and AGENTS.md forbids
+// mutating an existing CHECK on a shipped table). The translate job uses a PG
+// transaction-scoped advisory lock keyed on `asset_id` to prevent two parallel
+// workers from translating the same row at the same time — `pg_try_advisory_xact_lock`
+// releases automatically when the transaction commits or rolls back, so there is no
+// leaked lock surface area if the LLM call hangs.
+//
 // FIX-T (2026-10-06): the user explicitly opted out of body/fields translation
 // (`body_md` is english markdown + code blocks; adding machine-translated noise
 // to a developer's `.github/` directory is a footgun). We only translate the
@@ -135,99 +142,105 @@ export async function translateCodePromptsPending(opts: { limit?: number; budget
 }
 
 async function translateOne(p: PendingRow, model: string, fallbacks: string[]): Promise<CopilotTranslateResult> {
-  // Mark 'translating' in copilot_assets (parent state machine) and upsert a
-  // placeholder 'translating' row in copilot_translations so a parallel run
-  // cannot race into the same asset. The 'translating' status is intentionally
-  // NOT in the copilot_translations.status CHECK constraint — we use a separate
-  // 'in_flight' boolean. See migration 0050 for the constraint.
-  await sql`
-    UPDATE copilot_assets
-       SET status = 'translating', updated_at = now()
-     WHERE id = ${p.id} AND status IN ('fetched', 'indexed')`;
-  const hash = sourceHash(p.title_en, p.description_en);
-
-  try {
-    const res = await chatJsonWithFallback({
-      model,
-      fallbacks,
-      purpose: "translate_copilot",
-      subject: `copilot:${p.source_id}/${p.slug}`,
-      promptVersion: TRANSLATE_PROMPT_VERSION,
-      system: SYSTEM,
-      user: JSON.stringify({ title: p.title_en, description: p.description_en }),
-      schema: Output,
-      temperature: 0.2,
-      maxTokens: 1024,
-      timeoutMs: 60_000,
-    });
-    const out = res.data;
-    const descriptionEn = p.description_en || null;
-    const complete = !!out.titleZh && (descriptionEn === null ? true : !!out.descriptionZh);
-    const status: "translated" | "partial" = complete ? "translated" : "partial";
-
-    await sql`
-      INSERT INTO copilot_translations
-        (asset_id, locale, title, description, fields, model, status, fail_count, source_hash, created_at, updated_at)
-      VALUES
-        (${p.id}, 'zh', ${out.titleZh}, ${out.descriptionZh || null}, ${sql.json({})}::jsonb, ${res.model}, ${status}, 0, ${hash}, now(), now())
-      ON CONFLICT (asset_id, locale) DO UPDATE SET
-        title       = EXCLUDED.title,
-        description = EXCLUDED.description,
-        fields      = EXCLUDED.fields,
-        model       = EXCLUDED.model,
-        status      = EXCLUDED.status,
-        fail_count  = 0,
-        last_error  = NULL,
-        source_hash = EXCLUDED.source_hash,
-        updated_at  = now()`;
-
-    // Mark parent row back to 'indexed' (the terminal "fully indexed" state — mirrors
-    // how the publication layer filters with status IN ('fetched','indexed'), and means
-    // a future independent analyze pass inserting 'analyzing' on top is not racy).
-    await sql`
-      UPDATE copilot_assets
-         SET status = 'indexed', updated_at = now()
-       WHERE id = ${p.id} AND status = 'translating'`;
-
-    return { assetId: p.id, status, model: res.model };
-  } catch (error) {
-    const message = (error as Error).message.slice(0, 300);
-    const nextFailCount = p.fail_count + 1;
-    const terminal = nextFailCount >= MAX_RETRIES;
-
-    // Safety valve: disabled / not configured / budget — keep the row pending,
-    // do NOT bump fail_count (a model outage would otherwise burn 3 strikes in
-    // 3 minutes and park the entire queue permanently).
-    if (/disabled|not configured|budget/i.test(message) || (error instanceof ProviderRejectedError && !error.retryable)) {
-      // Safety-valve: model is permanently unavailable, not a transient bug.
-      // Park the row at 'indexed' (= "considered, can't translate yet") so the queue
-      // does not hammer a dead model every cycle. The next fetch (with updated blob_sha)
-      // can move it back to 'fetched' if upstream changes — at which point we'd retry.
-      await sql`UPDATE copilot_assets SET status = 'indexed', updated_at = now() WHERE id = ${p.id} AND status = 'translating'`;
-      return { assetId: p.id, status: "skipped", reason: message };
+  // Concurrent-run safety is an advisory lock keyed on `asset_id`. We wrap the
+  // entire translateOne body in `sql.begin(...)` so the lock auto-releases on
+  // commit or rollback — there is no leaked-lock surface if the LLM call hangs
+  // (postgres.js's timeoutMs above will throw, the tx aborts, the lock drops).
+  // Asset id is `bigserial` so it fits the int4 advisory-lock key range.
+  return sql.begin(async (tx) => {
+    const lockRows = await tx<{ locked: boolean }[]>`
+      SELECT pg_try_advisory_xact_lock(${p.id}) AS locked`;
+    if (!lockRows[0]?.locked) {
+      // Another worker is mid-translation for the same id. Not picked up this run.
+      return { assetId: p.id, status: "skipped", reason: "advisory-lock-held-by-other-worker" };
     }
+    const hash = sourceHash(p.title_en, p.description_en);
 
-    // Real failure: bump fail_count + last_error on the translation row. The
-    // row remains in copilot_assets.status='translating' if terminal (so the
-    // queue scan picks it up on a blob_sha change only); for non-terminal we
-    // set it back to 'indexed' so the next cycle retries.
-    await sql`
-      INSERT INTO copilot_translations
-        (asset_id, locale, title, description, fields, model, status, fail_count, last_error, source_hash, created_at, updated_at)
-      VALUES
-        (${p.id}, 'zh', ${p.title_en}, ${p.description_en ?? null}, ${sql.json({})}::jsonb, NULL, 'failed', ${nextFailCount}, ${message.slice(0, 500)}, ${hash}, now(), now())
-      ON CONFLICT (asset_id, locale) DO UPDATE SET
-        status     = 'failed',
-        fail_count = EXCLUDED.fail_count,
-        last_error = EXCLUDED.last_error,
-        source_hash = EXCLUDED.source_hash,
-        updated_at = now()`;
+    try {
+      const res = await chatJsonWithFallback({
+        model,
+        fallbacks,
+        purpose: "translate_copilot",
+        subject: `copilot:${p.source_id}/${p.slug}`,
+        promptVersion: TRANSLATE_PROMPT_VERSION,
+        system: SYSTEM,
+        user: JSON.stringify({ title: p.title_en, description: p.description_en }),
+        schema: Output,
+        temperature: 0.2,
+        maxTokens: 1024,
+        timeoutMs: 60_000,
+      });
+      const out = res.data;
+      const descriptionEn = p.description_en || null;
+      const complete = !!out.titleZh && (descriptionEn === null ? true : !!out.descriptionZh);
+      const status: "translated" | "partial" = complete ? "translated" : "partial";
 
-    await sql`
-      UPDATE copilot_assets
-         SET status = ${terminal ? "failed" : "indexed"}, fail_count = ${nextFailCount},
-             last_error = ${message.slice(0, 500)}, updated_at = now()
-       WHERE id = ${p.id} AND status = 'translating'`;
-    return { assetId: p.id, status: "failed", reason: message };
-  }
+      await tx`
+        INSERT INTO copilot_translations
+          (asset_id, locale, title, description, fields, model, status, fail_count, source_hash, created_at, updated_at)
+        VALUES
+          (${p.id}, 'zh', ${out.titleZh}, ${out.descriptionZh || null}, ${tx.json({})}::jsonb, ${res.model}, ${status}, 0, ${hash}, now(), now())
+        ON CONFLICT (asset_id, locale) DO UPDATE SET
+          title       = EXCLUDED.title,
+          description = EXCLUDED.description,
+          fields      = EXCLUDED.fields,
+          model       = EXCLUDED.model,
+          status      = EXCLUDED.status,
+          fail_count  = 0,
+          last_error  = NULL,
+          source_hash = EXCLUDED.source_hash,
+          updated_at  = now()`;
+
+      // Mark parent row back to 'indexed' (the terminal "fully indexed" state — mirrors
+      // how the publication layer filters with status IN ('fetched','indexed'), and means
+      // a future independent analyze pass inserting 'analyzing' on top is not racy).
+      // We do NOT constrain the WHERE on a transient state column — we already hold
+      // the advisory lock, which is the only writer the fetch pipeline can race with.
+      await tx`
+        UPDATE copilot_assets
+           SET status = 'indexed', updated_at = now()
+         WHERE id = ${p.id}`;
+
+      return { assetId: p.id, status, model: res.model };
+    } catch (error) {
+      const message = (error as Error).message.slice(0, 300);
+      const nextFailCount = p.fail_count + 1;
+      const terminal = nextFailCount >= MAX_RETRIES;
+
+      // Safety valve: disabled / not configured / budget — keep the row pending,
+      // do NOT bump fail_count (a model outage would otherwise burn 3 strikes in
+      // 3 minutes and park the entire queue permanently).
+      if (/disabled|not configured|budget/i.test(message) || (error instanceof ProviderRejectedError && !error.retryable)) {
+        // Safety-valve: model is permanently unavailable, not a transient bug.
+        // Park the row at 'indexed' (= "considered, can't translate yet") so the queue
+        // does not hammer a dead model every cycle. The next fetch (with updated blob_sha)
+        // can move it back to 'fetched' if upstream changes — at which point we'd retry.
+        await tx`UPDATE copilot_assets SET status = 'indexed', updated_at = now() WHERE id = ${p.id}`;
+        return { assetId: p.id, status: "skipped", reason: message };
+      }
+
+      // Real failure: bump fail_count + last_error on the translation row. The
+      // row moves to 'failed' in copilot_assets if terminal (the queue scan picks
+      // it up on a blob_sha change only); for non-terminal we set it back to 'indexed'
+      // so the next cycle retries.
+      await tx`
+        INSERT INTO copilot_translations
+          (asset_id, locale, title, description, fields, model, status, fail_count, last_error, source_hash, created_at, updated_at)
+        VALUES
+          (${p.id}, 'zh', ${p.title_en}, ${p.description_en ?? null}, ${tx.json({})}::jsonb, NULL, 'failed', ${nextFailCount}, ${message.slice(0, 500)}, ${hash}, now(), now())
+        ON CONFLICT (asset_id, locale) DO UPDATE SET
+          status     = 'failed',
+          fail_count = EXCLUDED.fail_count,
+          last_error = EXCLUDED.last_error,
+          source_hash = EXCLUDED.source_hash,
+          updated_at = now()`;
+
+      await tx`
+        UPDATE copilot_assets
+           SET status = ${terminal ? "failed" : "indexed"}, fail_count = ${nextFailCount},
+               last_error = ${message.slice(0, 500)}, updated_at = now()
+         WHERE id = ${p.id}`;
+      return { assetId: p.id, status: "failed", reason: message };
+    }
+  });
 }
