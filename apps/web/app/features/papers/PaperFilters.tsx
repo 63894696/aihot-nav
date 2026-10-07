@@ -25,9 +25,17 @@ const BIND_KEYS: ReadonlySet<string> = new Set(["category", "windowDays"]);
 
 export interface PaperFiltersProps {
   active: { category: string | null; windowDays: number };
+  /**
+   * FIX-Z.4 — called whenever the reader picks a chip. The route uses this to reset its
+   * client-side load-more state synchronously so a chip click feels instant instead of
+   * waiting for the React Router navigation + loader re-run. The chip Link still navigates
+   * via `to=` so the URL stays shareable; onChange just lets the component tear down any
+   * pending fetches before the new loader replaces them.
+   */
+  onChange?: (next: { category: string | null; windowDays: number }) => void;
 }
 
-export function PaperFilters({ active }: PaperFiltersProps) {
+export function PaperFilters({ active, onChange }: PaperFiltersProps) {
   const [params] = useSearchParams();
   const currentCategory = active.category;
   const currentWindow = active.windowDays;
@@ -58,6 +66,7 @@ export function PaperFilters({ active }: PaperFiltersProps) {
               key={c.value ?? "all"}
               to={to}
               prefetch="intent"
+              onClick={() => onChange?.({ category: c.value, windowDays: currentWindow })}
               className={`rounded-full px-3 py-1 text-[12.5px] transition-colors ${
                 active ? "bg-ink text-bg" : "bg-bg-muted text-ink-3 hover:bg-bg-sunk"
               }`}
@@ -78,6 +87,7 @@ export function PaperFilters({ active }: PaperFiltersProps) {
               key={w.value}
               to={to}
               prefetch="intent"
+              onClick={() => onChange?.({ category: currentCategory, windowDays: w.value })}
               className={`rounded-full px-3 py-1 text-[12.5px] transition-colors ${
                 active ? "bg-ink text-bg" : "bg-bg-muted text-ink-3 hover:bg-bg-sunk"
               }`}

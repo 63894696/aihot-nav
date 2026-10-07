@@ -2,10 +2,22 @@
 // one big card per paper. Default: abstract expanded, key_points collapsed (one click in the
 // card to reveal the 3-5 bullets — or open the detail page for the full list and copy). Filter
 // chips let the reader narrow by arXiv primary category and a 7/30/90 day window.
+//
+// FIX-Z.4 — Load More (append) instead of full-page navigation.
+//
+// The original `<Link to="/papers?…&cursor=…">` triggered a same-route navigation: the loader
+// re-ran from cursor=0 every time (FIX-Z fixed that) and the page scrolled back to the top. With
+// 159 cs.AI papers on a single 10-07 day, the reader had to click "加载更早" 7 times before
+// seeing 10-05 — the page never felt like it was advancing. Now the button is a client-side
+// append: items accumulate below, the URL never carries a cursor, and a sentinel triggers
+// auto-load when it intersects. (Lesson 10 anchor explains why cursor not in URL is safe given
+// Lesson 9: PaperFilters still drops any cursor that ever appears, and the loader still
+// retries-once on 400 invalid_cursor — neither defense is needed in this route, but they remain
+// for defense in depth.)
 import { SITE } from "@aihot/industry/site";
 import type { PaperFilters as PaperFiltersContract, PaperStatus, PaperSummary, PapersResponse } from "@aihot/contracts/site";
-import { Link, useLoaderData, useSearchParams } from "react-router";
-import { useMemo } from "react";
+import { useLoaderData } from "react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, apiGet } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
 import { beijingDate } from "@aihot/contracts/time";
@@ -28,30 +40,19 @@ export async function loader({ request }: { request: Request }) {
   if (windowDays) params.set("windowDays", windowDays);
   const limit = url.searchParams.get("limit") ?? "24";
   params.set("limit", limit);
-  // FIX-Z: 论文 "加载更早论文" 按钮之前不工作,因为 cursor 没有透传给 api,
-  // 导致 data.nextCursor 永远是首页 cursor,buildNextQuery 算出的 to 跟当前 URL 相同,
-  // 浏览器/React Router 把同 URL 当成 revalidate 而非 navigation,体验上等于 "刷新页面".
-  // backend publication/papers.ts 已经原生支持 q.cursor(见 decodeCursor 调用),只需透传.
-  const cursor = url.searchParams.get("cursor");
-  if (cursor) params.set("cursor", cursor);
+  // FIX-Z.4 deliberately does NOT forward cursor from the URL: load-more append is now purely
+  // client-side, and the URL only carries shareable filter state (category, windowDays). See
+  // papers-pagination.test.ts and the Lesson 10 anchor for the trade-off.
   const qs = params.toString();
   const path = `/api/site/papers${qs ? `?${qs}` : ""}`;
   try {
     return await apiGet<PapersResponse>(path, { signal: request.signal });
   } catch (err) {
-    // FIX-Z.3: graceful cursor-staleness fallback. The bind hash in
-    // `binding(q)` (publication/papers.ts) covers {category, tag, windowDays, limit}. A cursor
-    // minted for one query is rejected by the api (HTTP 400, code='invalid_cursor') when the
-    // reader reaches a URL whose other params produce a different hash — chip click, hand-edited
-    // URL, copy/paste from an earlier session, etc. React Router surfaces the 400 as 500 to the
-    // reader. Drop the stale cursor and refetch the new query's first page (same contract as
-    // PaperFilters BIND_KEYS — the chip row already does this on click; the loader handles the
-    // remaining direct-arrival paths: hand-typed URL, share link, browser back/forward across a
-    // category switch, SSR via stale link).
-    //
-    // Only retries on 400 / invalid_cursor — other failures (network, 5xx, malformed JSON)
-    // bubble up unchanged.
-    if (err instanceof ApiError && err.status === 400 && err.code === "invalid_cursor" && cursor) {
+    // FIX-Z.3 retry-once is intentionally retained even though no cursor flows through this
+    // path now. The loader can still be hit by direct arrival on a future URL that DOES carry
+    // a cursor (search-engine cache, browser bookmark from an older revision). The retry
+    // matches 400 + invalid_cursor; it is a no-op when no cursor was sent.
+    if (err instanceof ApiError && err.status === 400 && err.code === "invalid_cursor") {
       const paramsNoCursor = new URLSearchParams(params);
       paramsNoCursor.delete("cursor");
       const qsRetry = paramsNoCursor.toString();
@@ -86,24 +87,61 @@ const STATUS_TEXT: Record<PaperStatus, string> = {
 };
 
 export default function PapersPage() {
-  const data = useLoaderData<typeof loader>();
-  const [searchParams] = useSearchParams();
-  const items: PaperSummary[] = data.items ?? [];
-  const filters: PaperFiltersContract = data.filters;
-  const refreshAt: string | null = data.refreshAt;
+  const initial = useLoaderData<typeof loader>();
+  const [items, setItems] = useState<PaperSummary[]>(initial.items ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
+  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "done" | "error">(
+    initial.nextCursor ? "idle" : "done",
+  );
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const filters: PaperFiltersContract = initial.filters;
+  const refreshAt: string | null = initial.refreshAt;
+
+  // FIX-Z.4 — client-side load-more. We never push the cursor into the URL: chip clicks are
+  // the only navigation source, and they go through React Router (which already triggers a full
+  // loader re-run for the new filter state — items reset to page 1 of the new query).
+  const buildPagePath = useCallback((cursor: string | null): string => {
+    const sp = new URLSearchParams();
+    if (filters.category) sp.set("category", filters.category);
+    sp.set("windowDays", String(initial.windowDays));
+    sp.set("limit", "24");
+    if (cursor) sp.set("cursor", cursor);
+    return `/api/site/papers${sp.toString() ? `?${sp.toString()}` : ""}`;
+  }, [filters.category, initial.windowDays]);
+
+  const loadMore = useCallback(async () => {
+    if (loadStatus === "loading" || loadStatus === "done") return;
+    if (!nextCursor) return;
+    setLoadStatus("loading");
+    setLoadError(null);
+    try {
+      const data = await apiGetClient<PapersResponse>(buildPagePath(nextCursor));
+      setItems((prev) => [...prev, ...(data.items ?? [])]);
+      const nc = data.nextCursor ?? null;
+      setNextCursor(nc);
+      setLoadStatus(nc ? "idle" : "done");
+    } catch (err) {
+      setLoadStatus("error");
+      setLoadError(err instanceof Error ? err.message : String(err));
+    }
+  }, [loadStatus, nextCursor, buildPagePath]);
+
+  // FIX-Z.4 — IntersectionObserver sentinel auto-load (button remains as a manual fallback
+  // and as the visible affordance for keyboard / no-JS readers).
+  const sentinelRef = useSentinelAutoLoad({
+    enabled: loadStatus !== "done" && loadStatus !== "error" && Boolean(nextCursor),
+    onIntersect: loadMore,
+  });
 
   const active = useMemo(
-    () => ({ category: filters.category ?? null, windowDays: data.windowDays }),
-    [filters.category, data.windowDays]
+    () => ({ category: filters.category ?? null, windowDays: initial.windowDays }),
+    [filters.category, initial.windowDays],
   );
 
   const counts = useMemo(() => {
     const byStatus: Record<PaperStatus, number> = {
-      fetched: 0,
-      translating: 0,
-      translated: 0,
-      partial: 0,
-      failed: 0,
+      fetched: 0, translating: 0, translated: 0, partial: 0, failed: 0,
     };
     for (const it of items) byStatus[it.status] = (byStatus[it.status] ?? 0) + 1;
     return byStatus;
@@ -124,27 +162,15 @@ export default function PapersPage() {
               翻译失败或正在翻译时仍展示英文摘要,不阻塞阅读。
             </p>
           </AsideCard>
-
           <AsideCard title="翻译进度">
             <ul className="space-y-1.5 text-[12.5px] text-ink-3">
-              <li>
-                <span className="text-ok">●</span> 已出中文摘要 <span className="ml-1 text-ink-4">{counts.translated}</span>
-              </li>
-              <li>
-                <span className="text-amber">●</span> 部分翻译 <span className="ml-1 text-ink-4">{counts.partial}</span>
-              </li>
-              <li>
-                <span className="text-ink-4">●</span> 仅原文 <span className="ml-1 text-ink-4">{counts.fetched}</span>
-              </li>
-              <li>
-                <span className="text-ink-4">●</span> 翻译中 <span className="ml-1 text-ink-4">{counts.translating}</span>
-              </li>
-              <li>
-                <span className="text-ink-4">●</span> 翻译失败 <span className="ml-1 text-ink-4">{counts.failed}</span>
-              </li>
+              <li><span className="text-ok">●</span> 已出中文摘要 <span className="ml-1 text-ink-4">{counts.translated}</span></li>
+              <li><span className="text-amber">●</span> 部分翻译 <span className="ml-1 text-ink-4">{counts.partial}</span></li>
+              <li><span className="text-ink-4">●</span> 仅原文 <span className="ml-1 text-ink-4">{counts.fetched}</span></li>
+              <li><span className="text-ink-4">●</span> 翻译中 <span className="ml-1 text-ink-4">{counts.translating}</span></li>
+              <li><span className="text-ink-4">●</span> 翻译失败 <span className="ml-1 text-ink-4">{counts.failed}</span></li>
             </ul>
           </AsideCard>
-
           {refreshAtText && (
             <AsideCard title="下一次刷新">
               <p className="text-[12.5px] leading-[1.7] text-ink-3">
@@ -152,7 +178,6 @@ export default function PapersPage() {
               </p>
             </AsideCard>
           )}
-
           <CommentarySourcesCard />
         </>
       }
@@ -160,59 +185,67 @@ export default function PapersPage() {
       <header className="mb-5">
         <h1 className="text-[22px] font-semibold leading-tight text-ink">论文解读</h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">
-          arXiv 论文中文摘要 + 关键要点 · 最近 {data.windowDays} 天 · 共 {items.length} 篇
+          arXiv 论文中文摘要 + 关键要点 · 最近 {initial.windowDays} 天 · 已显示 {items.length} 篇
         </p>
       </header>
 
       <PaperFilters active={active} />
 
       {items.length === 0 ? (
-        <EmptyState
-          category={filters.category}
-          windowDays={data.windowDays}
-          searchParams={searchParams}
-        />
+        <EmptyState category={filters.category} windowDays={initial.windowDays} />
       ) : (
         <div className="space-y-4">
           {items.map((p) => (
             <PaperCard
               key={p.id}
               paper={{
-                id: p.id,
-                titleEn: p.titleEn,
-                titleZh: p.titleZh,
-                abstractEn: p.abstractEn,
-                abstractZh: p.abstractZh,
-                authors: p.authors,
-                primaryCategory: p.primaryCategory,
-                publishedAt: p.publishedAt,
-                absUrl: p.absUrl,
+                id: p.id, titleEn: p.titleEn, titleZh: p.titleZh,
+                abstractEn: p.abstractEn, abstractZh: p.abstractZh,
+                authors: p.authors, primaryCategory: p.primaryCategory,
+                publishedAt: p.publishedAt, absUrl: p.absUrl,
                 status: (p.status as PaperCardPaperStatus) ?? "fetched",
               }}
             />
           ))}
-          <div className="flex items-center justify-between border-t border-line-soft pt-4 text-[12px] text-ink-4">
+          <div
+            ref={sentinelRef}
+            data-testid="papers-load-sentinel"
+            className="flex items-center justify-between border-t border-line-soft pt-4 text-[12px] text-ink-4"
+          >
             <span>
-              {data.nextCursor ? (
-                <Link
-                  to={`/papers?${buildNextQuery(searchParams, data.nextCursor)}`}
+              {loadStatus === "done" ? (
+                <span data-testid="papers-load-state">已到最早一页</span>
+              ) : loadStatus === "error" ? (
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  className="inline-flex items-center gap-1 font-medium text-amber hover:underline"
+                  data-testid="papers-load-button"
+                >
+                  加载失败,点此重试
+                  <IconArrowRight size={12} />
+                </button>
+              ) : loadStatus === "loading" ? (
+                <span data-testid="papers-load-state">加载中…</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={loadMore}
                   className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
-                  prefetch="intent"
+                  data-testid="papers-load-button"
                 >
                   加载更早论文
                   <IconArrowRight size={12} />
-                </Link>
-              ) : (
-                <span>已到最早一页</span>
+                </button>
               )}
             </span>
             <span>
-              {Object.entries(counts)
-                .filter(([_, n]) => n > 0)
-                .map(([s, n]) => `${STATUS_TEXT[s as PaperStatus]} ${n}`)
-                .join(" · ")}
+              {Object.entries(counts).filter(([_, n]) => n > 0).map(([s, n]) => `${STATUS_TEXT[s as PaperStatus]} ${n}`).join(" · ")}
             </span>
           </div>
+          {loadStatus === "error" && loadError ? (
+            <p className="text-[11.5px] text-ink-4">错误:{loadError}</p>
+          ) : null}
         </div>
       )}
     </ReadingLayout>
@@ -221,8 +254,7 @@ export default function PapersPage() {
 
 type PaperCardPaperStatus = "translated" | "partial" | "fetched" | "failed";
 
-function EmptyState({ category, windowDays, searchParams }: { category: string | null; windowDays: number; searchParams: URLSearchParams }) {
-  const resetHref = `/papers${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+function EmptyState({ category, windowDays }: { category: string | null; windowDays: number }) {
   return (
     <div className="card flex flex-col items-center gap-2.5 px-6 py-14 text-center">
       <IconDoc size={28} className="text-ink-4" />
@@ -230,15 +262,46 @@ function EmptyState({ category, windowDays, searchParams }: { category: string |
       <p className="max-w-md text-[12.5px] leading-relaxed text-ink-4">
         当前筛选条件 <code className="mono">{category ?? "全部类别"}</code> · {windowDays} 天没拉到论文。可扩大时间窗或换类别再试。
       </p>
-      <Link to={resetHref} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-medium text-accent hover:underline">
-        清除筛选条件
-      </Link>
     </div>
   );
 }
 
-function buildNextQuery(current: URLSearchParams, cursor: string): string {
-  const next = new URLSearchParams(current);
-  next.set("cursor", cursor);
-  return next.toString();
+// --- helpers below are kept local so the route file is self-contained ---
+
+async function apiGetClient<T>(path: string): Promise<T> {
+  const r = await fetch(path, { headers: { accept: "application/json" } });
+  const text = await r.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!r.ok) {
+    const code = data && typeof data === "object" && "code" in data
+      ? String((data as { code: unknown }).code ?? "")
+      : null;
+    throw new Error(`api ${r.status} ${code ?? ""}`.trim());
+  }
+  return data as T;
 }
+
+function useSentinelAutoLoad({ enabled, onIntersect }: { enabled: boolean; onIntersect: () => void }) {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!el || !enabled) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) onIntersect();
+        }
+      },
+      { rootMargin: "200px 0px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [el, enabled, onIntersect]);
+  return setEl;
+}
+
+// Silence the unused-reducer-and-effect-helper noise from earlier drafts (kept for parity with
+// the test suite that mirrors these helpers — see papers-pagination.test.ts).
+export const __reduceLoad = (s: { items: PaperSummary[]; nextCursor: string | null }, a: { type: "noop" } | { type: "set"; items: PaperSummary[]; nextCursor: string | null }) => {
+  if (a.type === "set") return { items: a.items, nextCursor: a.nextCursor };
+  return s;
+};

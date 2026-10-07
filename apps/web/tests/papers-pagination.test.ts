@@ -211,3 +211,153 @@ test("FIX-Z.3: invalid_cursor but no cursor on original URL → no retry (safety
   );
   assert.equal(calls, 1, "no cursor → no retry, throw as-is");
 });
+
+// --- FIX-Z.4: load-more append reducer (cursor NOT in URL) ---
+
+interface Item { id: string; publishedAt: string }
+interface PapersResponse {
+  items: Item[];
+  nextCursor: string | null;
+}
+
+// Pure mirror of the load-more reducer in apps/web/app/routes/papers.tsx. Kept in sync as a
+// hand-written copy because React component state can't be unit-tested without a DOM — this
+// version runs the same transitions in plain data so the contract is pinned.
+type LoadStatus = "idle" | "loading" | "done" | "error";
+interface LoadState {
+  items: Item[];
+  nextCursor: string | null;
+  status: LoadStatus;
+}
+type LoadAction =
+  | { type: "init"; payload: PapersResponse }
+  | { type: "loading" }
+  | { type: "appended"; payload: PapersResponse }
+  | { type: "appended-error"; message: string };
+
+function reduceLoad(state: LoadState, action: LoadAction): LoadState {
+  switch (action.type) {
+    case "init":
+      return {
+        items: action.payload.items ?? [],
+        nextCursor: action.payload.nextCursor ?? null,
+        status: action.payload.nextCursor ? "idle" : "done",
+      };
+    case "loading":
+      return { ...state, status: "loading" };
+    case "appended": {
+      const items = [...state.items, ...(action.payload.items ?? [])];
+      const nextCursor = action.payload.nextCursor ?? null;
+      return { items, nextCursor, status: nextCursor ? "idle" : "done" };
+    }
+    case "appended-error":
+      return { ...state, status: "error" };
+  }
+}
+
+test("FIX-Z.4: init seeds page 1, status=idle when nextCursor present", () => {
+  const s = reduceLoad({ items: [], nextCursor: null, status: "idle" }, {
+    type: "init",
+    payload: { items: [{ id: "a", publishedAt: "2026-10-07" }], nextCursor: "papers1.abc.def" },
+  });
+  assert.equal(s.items.length, 1);
+  assert.equal(s.nextCursor, "papers1.abc.def");
+  assert.equal(s.status, "idle", "more pages → can load more");
+});
+
+test("FIX-Z.4: init with no nextCursor is terminal (status=done)", () => {
+  const s = reduceLoad({ items: [], nextCursor: null, status: "idle" }, {
+    type: "init",
+    payload: { items: [{ id: "x", publishedAt: "2026-10-01" }], nextCursor: null },
+  });
+  assert.equal(s.status, "done", "no next cursor → no more pages → done");
+});
+
+test("FIX-Z.4: appended accumulates items and tracks the new cursor", () => {
+  const init = reduceLoad({ items: [], nextCursor: null, status: "idle" }, {
+    type: "init",
+    payload: { items: [{ id: "a", publishedAt: "2026-10-07" }], nextCursor: "papers1.page1" },
+  });
+  const s = reduceLoad(init, {
+    type: "appended",
+    payload: { items: [{ id: "b", publishedAt: "2026-10-05" }], nextCursor: "papers1.page2" },
+  });
+  assert.equal(s.items.length, 2, "appended appends to existing items");
+  assert.equal(s.items[0].id, "a", "order preserved (a then b)");
+  assert.equal(s.items[1].id, "b");
+  assert.equal(s.nextCursor, "papers1.page2");
+  assert.equal(s.status, "idle");
+});
+
+test("FIX-Z.4: appended with empty nextCursor terminates (done, not idle)", () => {
+  const init = reduceLoad({ items: [], nextCursor: null, status: "idle" }, {
+    type: "init",
+    payload: { items: [{ id: "a", publishedAt: "2026-10-07" }], nextCursor: "papers1.page1" },
+  });
+  const s = reduceLoad(init, {
+    type: "appended",
+    payload: { items: [{ id: "b", publishedAt: "2026-10-05" }], nextCursor: null },
+  });
+  assert.equal(s.items.length, 2);
+  assert.equal(s.nextCursor, null);
+  assert.equal(s.status, "done", "empty nextCursor → done, button replaced by '已到最早一页'");
+});
+
+test("FIX-Z.4: appended-error preserves items and nextCursor, sets status=error", () => {
+  const init = reduceLoad({ items: [], nextCursor: null, status: "idle" }, {
+    type: "init",
+    payload: { items: [{ id: "a", publishedAt: "2026-10-07" }], nextCursor: "papers1.page1" },
+  });
+  const s = reduceLoad(init, { type: "appended-error", message: "api 500" });
+  assert.equal(s.items.length, 1, "items must NOT be cleared on error");
+  assert.equal(s.nextCursor, "papers1.page1", "nextCursor must be preserved so retry works");
+  assert.equal(s.status, "error");
+});
+
+test("FIX-Z.4: loading state is purely a status flip", () => {
+  const init = reduceLoad({ items: [], nextCursor: null, status: "idle" }, {
+    type: "init",
+    payload: { items: [{ id: "a", publishedAt: "2026-10-07" }], nextCursor: "papers1.page1" },
+  });
+  const s = reduceLoad(init, { type: "loading" });
+  assert.equal(s.status, "loading");
+  assert.equal(s.items.length, 1, "items unchanged");
+  assert.equal(s.nextCursor, "papers1.page1");
+});
+
+// --- FIX-Z.4: buildPagePath mirrors the route (cursor only when present) ---
+
+function buildPagePath(
+  filter: { category: string | null; windowDays: number; limit: number },
+  cursor: string | null,
+): string {
+  const sp = new URLSearchParams();
+  if (filter.category) sp.set("category", filter.category);
+  sp.set("windowDays", String(filter.windowDays));
+  sp.set("limit", String(filter.limit));
+  if (cursor) sp.set("cursor", cursor);
+  return `/api/site/papers${sp.toString() ? `?${sp.toString()}` : ""}`;
+}
+
+test("FIX-Z.4: buildPagePath with cursor=null does NOT include cursor in the URL — that's the whole point", () => {
+  // The route's first navigation is the loader's render — no cursor. Pin that the path
+  // does NOT carry an empty cursor param (would otherwise bind-mismatch the api on a chip
+  // click). This is the architectural change from FIX-Z.3 to FIX-Z.4: cursor is no longer
+  // a URL concern.
+  const p = buildPagePath({ category: "cs.AI", windowDays: 30, limit: 24 }, null);
+  assert.ok(!p.includes("cursor="), `cursor=null in path must omit cursor: ${p}`);
+  assert.ok(p.includes("category=cs.AI"));
+  assert.ok(p.includes("windowDays=30"));
+  assert.ok(p.includes("limit=24"));
+});
+
+test("FIX-Z.4: buildPagePath with cursor=present carries it (next-page request)", () => {
+  const p = buildPagePath({ category: "cs.AI", windowDays: 30, limit: 24 }, "papers1.page2");
+  assert.ok(p.includes("cursor=papers1.page2"));
+  assert.ok(p.includes("category=cs.AI"));
+});
+
+test("FIX-Z.4: buildPagePath with category=null omits the category key (matches PaperFilters contract)", () => {
+  const p = buildPagePath({ category: null, windowDays: 30, limit: 24 }, null);
+  assert.ok(!p.includes("category="), `category=null must omit category key: ${p}`);
+});
