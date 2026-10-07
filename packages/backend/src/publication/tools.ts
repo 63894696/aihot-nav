@@ -4,7 +4,7 @@
 // "derive from publications" decision). Distinct from /new, which is the last 24h hot window:
 // /tools is a longer window (default 30d), supports category/tag/channel filters, and paginates.
 import type { CategoryKey, ChannelKey } from "@aihot/contracts/taxonomy";
-import type { FeedItemSummary, SiteItemDetail, SiteToolDetail, ToolsResponse, ToolsSort } from "@aihot/contracts/site";
+import type { FeedItemSummary, PaperSummary, PromptCard, SiteItemDetail, SiteToolDetail, ToolsResponse, ToolsSort } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
 import {
@@ -133,12 +133,17 @@ export type ToolDetailResult =
   | { kind: "not_found" };
 
 /**
- * /api/site/tool/:id. Wraps loadItemDetail with two narrow queries:
+ * /api/site/tool/:id. Wraps loadItemDetail with four narrow queries:
  *   - siblings discovered in the last 7 days that share at least one tag (the "recent updates" rail)
  *   - top-scoring siblings whose tag overlap is ≥ 2 (the "related tools" rail)
+ *   - cross-axis papers linked via tool_papers (FIX-AA.2 reverse-discovery panel)
+ *   - cross-axis prompts reachable via tool_papers → paper_prompts (FIX-AA.2)
  *
  * No tools/tools_versions schema exists yet (plan §3.1.2 defers it to W3+); tag overlap is the
- * only signal we have without a canonical entity table.
+ * only signal we have without a canonical entity table. The cross-axis panels (papers + prompts)
+ * depend on join tables that are mostly empty today; they return [] when empty and the UI hides
+ * the section. Each loadTool* call is independently wrapped in try/catch by its helper — losing
+ * the panel is acceptable, losing the page is not.
  */
 export async function loadToolDetail(id: string, now = new Date(), original = false): Promise<ToolDetailResult> {
   const result = await loadItemDetail(id, now);
@@ -146,11 +151,14 @@ export async function loadToolDetail(id: string, now = new Date(), original = fa
   // Pin the body language in the underlying ItemDetail before siteItemDetail drops text/translation.
   const item: SiteItemDetail = siteItemDetail(result.detail, original);
   const tags = result.row.tags;
-  const [updates, related] = await Promise.all([
+  // FIX-AA.2 — reverse discovery. Best-effort: a join-table outage must not 500 the detail page.
+  // loadToolDiscover wraps each block in try/catch and returns [] on failure. Both may be [].
+  const [updates, related, discovered] = await Promise.all([
     tags.length > 0 ? loadToolUpdates(id, tags, now) : Promise.resolve([] as FeedItemSummary[]),
     tags.length > 0 ? loadRelatedTools(id, tags, now) : Promise.resolve([] as FeedItemSummary[]),
+    loadToolDiscover(id),
   ]);
-  return { kind: "found", detail: { ...item, updates, related } };
+  return { kind: "found", detail: { ...item, updates, related, relatedPapers: discovered.relatedPapers, relatedPrompts: discovered.relatedPrompts } };
 }
 
 /** Sibling tool/model/platform items sharing at least one tag, discovered in the last 7 days. */
@@ -181,4 +189,162 @@ async function loadRelatedTools(selfId: string, tags: string[], now: Date): Prom
     ORDER BY p.score DESC NULLS LAST, p.sort_at DESC, p.article_id DESC
     LIMIT ${RELATED_LIMIT}`;
   return rows.map(toFeedItemSummary);
+}
+
+// ============================================================================
+// FIX-AA.2 — /tools/:id "反向发现" panel. Mirror of loadPaperDiscover but the
+// inverse axis: given an article_id, what papers and prompts is this tool
+// cross-axis-linked to?
+//
+//   - relatedPapers: arXiv papers linked via tool_papers (article_id ↔ arxiv_id),
+//     capped at 6. Shape = PaperSummary so the /tools page can reuse PaperSiblingCard.
+//     Today the join table is empty for most rows; returns [] when no matches.
+//   - relatedPrompts: there is no direct `tool_prompts` join table, so we walk the
+//     cross-axis through papers — tool_papers → paper_prompts reverse — and pull
+//     unique prompts. Capped at 6. Shape = PromptCard.
+//
+// Best-effort semantics (same as loadPaperDiscover): any throw inside the SQL blocks
+// is caught and converted to []. The /tools/:id page must not 500 because a join
+// table failed — losing the related panel is acceptable, losing the page is not.
+// loadToolDetail wraps this in a try/catch too, defense in depth on top of these.
+//
+// Why not inline into loadToolDetail: the related SQL is independent enough to
+// unit-test in isolation. The 6-row caps keep the entire detail page cheap even
+// when a tool is heavily linked (today: 0 rows in both joins for any tool — the
+// join tables are empty in production; this commit wires the read layer so the
+// panel will populate as the worker pipeline fills tool_papers / paper_prompts
+// from the future FIX-AA follow-up).
+// ============================================================================
+
+const TOOL_DISCOVER_LIMIT = 6;
+
+export async function loadToolDiscover(articleId: string): Promise<{ relatedPapers: PaperSummary[]; relatedPrompts: PromptCard[] }> {
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(articleId)) return { relatedPapers: [], relatedPrompts: [] };
+  const [papers, prompts] = await Promise.all([loadToolRelatedPapers(articleId), loadToolRelatedPrompts(articleId)]);
+  return { relatedPapers: papers, relatedPrompts: prompts };
+}
+
+async function loadToolRelatedPapers(articleId: string): Promise<PaperSummary[]> {
+  // Cross-axis: tool_papers.arxiv_id → papers.arxiv_id, gated on papers row existing
+  // + matching the visibility gate the /tools page already uses (public visibility, public
+  // indexable — paper_prompts has no visibility concept, so we only gate on row presence).
+  // Order: most recently published paper first, with arxiv_id DESC as a tiebreaker for
+  // deterministic pagination if a future cursor is added.
+  try {
+    const rows = await sql<Array<{
+      arxiv_id: string;
+      title_en: string;
+      title_zh: string | null;
+      abstract_en: string;
+      abstract_zh: string | null;
+      authors: string[];
+      primary_category: string;
+      published_at: Date;
+      abs_url: string;
+      status: PaperSummary["status"];
+    }>>`
+      SELECT pa.arxiv_id, pa.title_en, pa.title_zh, pa.abstract_en, pa.abstract_zh,
+             pa.authors, pa.primary_category, pa.published_at, pa.abs_url, pa.status
+      FROM tool_papers tp
+      JOIN papers pa ON pa.arxiv_id = tp.arxiv_id
+      WHERE tp.article_id = ${articleId}
+      ORDER BY pa.published_at DESC, pa.arxiv_id DESC
+      LIMIT ${TOOL_DISCOVER_LIMIT}`;
+    return rows.map(toolRelatedPaperToSummary);
+  } catch {
+    return [];
+  }
+}
+
+function toolRelatedPaperToSummary(r: {
+  arxiv_id: string;
+  title_en: string;
+  title_zh: string | null;
+  abstract_en: string;
+  abstract_zh: string | null;
+  authors: string[];
+  primary_category: string;
+  published_at: Date;
+  abs_url: string;
+  status: PaperSummary["status"];
+}): PaperSummary {
+  // Mirrors toPaperSummary in papers.ts so the /tools page renders identical cards.
+  // The cap (6) on the SQL side keeps the author list short — we still apply the same
+  // MAX_AUTHORS=6 + "et al." fallback so a heavily-authored paper renders cleanly.
+  const MAX_AUTHORS = 6;
+  const authors = r.authors.length > MAX_AUTHORS ? [...r.authors.slice(0, MAX_AUTHORS), "et al."] : r.authors;
+  return {
+    id: r.arxiv_id,
+    titleEn: r.title_en,
+    titleZh: r.title_zh,
+    abstractEn: r.abstract_en.slice(0, 240),
+    abstractZh: r.abstract_zh,
+    authors,
+    primaryCategory: r.primary_category,
+    publishedAt: r.published_at.toISOString(),
+    absUrl: r.abs_url,
+    status: r.status,
+  };
+}
+
+async function loadToolRelatedPrompts(articleId: string): Promise<PromptCard[]> {
+  // Inverse-path: tool → tool_papers → papers → paper_prompts → prompt_items.
+  // We use DISTINCT to dedupe prompts when the same prompt_id links through multiple
+  // arxiv_ids (rare today; the join is mostly empty). Order by prompt capture time
+  // DESC so the most recent prompt surfaces first; the cap (6) is the upper bound.
+  try {
+    const rows = await sql<Array<{
+      id: number;
+      article_id: string | null;
+      original_url: string;
+      original_post_id: string | null;
+      community: string;
+      category: PromptCard["category"];
+      prompt_text: string;
+      use_case: string | null;
+      language: string;
+      source_kind: PromptCard["sourceKind"];
+      captured_at: Date;
+    }>>`
+      SELECT DISTINCT p.id, p.article_id, p.original_url, p.original_post_id, p.community,
+                      p.category, p.prompt_text, p.use_case, p.language, p.source_kind, p.captured_at
+      FROM tool_papers tp
+      JOIN paper_prompts pp ON pp.arxiv_id = tp.arxiv_id
+      JOIN prompt_items p ON p.id = pp.prompt_id
+      WHERE tp.article_id = ${articleId}
+      ORDER BY p.captured_at DESC, p.id DESC
+      LIMIT ${TOOL_DISCOVER_LIMIT}`;
+    return rows.map(toolRelatedPromptToCard);
+  } catch {
+    return [];
+  }
+}
+
+function toolRelatedPromptToCard(r: {
+  id: number;
+  article_id: string | null;
+  original_url: string;
+  original_post_id: string | null;
+  community: string;
+  category: PromptCard["category"];
+  prompt_text: string;
+  use_case: string | null;
+  language: string;
+  source_kind: PromptCard["sourceKind"];
+  captured_at: Date;
+}): PromptCard {
+  // Mirrors readPromptMeta in prompts.ts: same field naming + same promptPreview cut.
+  // Keeping this helper inline (rather than reusing readPromptMeta) keeps the SQL
+  // typed shape visible above and avoids importing PromptRow from papers.ts.
+  return {
+    id: String(r.id),
+    category: r.category,
+    useCase: r.use_case,
+    promptPreview: r.prompt_text.slice(0, 240),
+    language: r.language,
+    community: r.community,
+    sourceKind: r.source_kind,
+    originalUrl: r.original_url,
+    capturedAt: r.captured_at.toISOString(),
+  };
 }

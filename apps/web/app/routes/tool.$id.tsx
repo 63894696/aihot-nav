@@ -4,12 +4,18 @@
 //   - 最近 7 天的更新: siblings discovered this week that share at least one tag (ToolUpdates)
 //   - 相关工具: top-scoring siblings with tag overlap ≥ 2 (RelatedTools)
 // The left rail keeps 来源 / 本文目录; the right rail keeps 收藏/原文 + the two new pieces + tags.
+//
+// FIX-AA.2 — bottom-of-article "反向发现" panel rendering related arXiv papers (linked via
+// tool_papers) + related prompts (linked via tool_papers → paper_prompts reverse path). The
+// loader fetches /api/site/tool/:id/discover in parallel with the main detail; the section is
+// hidden entirely when both lists are empty (defensive UI convention; mirrors papers.$id.tsx
+// 的反向发现 ship).
 import { SITE, withSubject } from "@aihot/industry/site";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 import type { Route } from "./+types/tool.$id";
-import type { SiteToolDetail } from "@aihot/contracts/site";
-import { loadOr404 } from "../lib/api.server";
+import type { PaperSummary, PromptCard, SiteToolDetail } from "@aihot/contracts/site";
+import { apiGet, loadOr404 } from "../lib/api.server";
 import { breadcrumbLd, pageMeta, siteUrl, titled } from "../lib/seo";
 import { fullDateTime, relativeTime } from "../lib/format";
 import { markRead } from "../lib/local-state";
@@ -25,13 +31,30 @@ import { MediaGallery } from "../features/item/MediaGallery";
 import { QuotedPost } from "../features/item/QuotedPost";
 import { ToolUpdates } from "../features/feed/ToolUpdates";
 import { RelatedTools } from "../features/feed/RelatedTools";
+import { PaperSiblingCard } from "../features/papers/PaperSiblingCard";
+import { PromptCard as PromptCardView } from "../features/prompts/PromptCard";
 import { IconArrowLeft, IconCopy, IconDownload, IconExternal, IconImage, IconMenu, IconShare } from "../components/icons";
 
 const PosterSheet = lazy(() => import("../features/item/PosterSheet"));
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const tool = await loadOr404<SiteToolDetail>(`/api/site/tool/${encodeURIComponent(params.id)}`, { signal: request.signal });
-  return { tool };
+  // FIX-AA.2 — reverse discovery. Parallel to the main detail; best-effort (the backend wraps
+  // each block in try/catch and returns [] on failure). Both lists may be [] — the UI hides
+  // the section entirely when both are empty, mirroring papers.$id.tsx 的反向发现 convention.
+  let relatedPapers: PaperSummary[] = [];
+  let relatedPrompts: PromptCard[] = [];
+  try {
+    const r = await apiGet<{ relatedPapers: PaperSummary[]; relatedPrompts: PromptCard[] }>(
+      `/api/site/tool/${encodeURIComponent(params.id)}/discover`,
+      { signal: request.signal },
+    );
+    relatedPapers = Array.isArray(r.relatedPapers) ? r.relatedPapers : [];
+    relatedPrompts = Array.isArray(r.relatedPrompts) ? r.relatedPrompts : [];
+  } catch {
+    // Degrade silently — the parent page still renders.
+  }
+  return { tool, relatedPapers, relatedPrompts };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -104,7 +127,7 @@ async function shareOrCopy(item: Pick<SiteToolDetail, "id" | "title">): Promise<
 }
 
 export default function ToolDetailPage() {
-  const { tool } = useLoaderData<typeof loader>();
+  const { tool, relatedPapers, relatedPrompts } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   // The rail pieces reference item shape, but the body still uses SiteItemDetail fields; the two
   // endpoints alias the same row, so reading item.x/item.body is safe.
@@ -408,6 +431,54 @@ export default function ToolDetailPage() {
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {/* FIX-AA.2 — 反向发现 (related discovery). Section hidden entirely when both lists
+              are empty (defensive UI convention). Papers are listed first (the most likely
+              useful adjacent material on a tool page), prompts second. Mirrors the
+              papers.$id.tsx reverse-discovery layout so readers see the same shape regardless
+              of which axis they entered from. */}
+          {(relatedPapers.length > 0 || relatedPrompts.length > 0) && (
+            <section className="mt-8 border-t border-line pt-4">
+              <header className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-[14px] font-semibold text-ink">反向发现 · 这个工具相关的论文与提示词</h2>
+                <Link to="/all" className="text-[12px] text-accent hover:underline">
+                  去交叉发现 →
+                </Link>
+              </header>
+
+              {relatedPapers.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="mb-2 text-[12.5px] font-medium text-ink-3">关联论文 · {relatedPapers.length}</h3>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {relatedPapers.map((p) => (
+                      <PaperSiblingCard
+                        key={p.id}
+                        paper={{
+                          id: p.id,
+                          titleZh: p.titleZh,
+                          titleEn: p.titleEn,
+                          primaryCategory: p.primaryCategory,
+                          publishedAt: p.publishedAt,
+                          status: (p.status as "translated" | "partial" | "translating" | "failed" | "fetched") ?? "fetched",
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {relatedPrompts.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-[12.5px] font-medium text-ink-3">关联提示词 · {relatedPrompts.length}</h3>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {relatedPrompts.map((pr) => (
+                      <PromptCardView key={pr.id} prompt={pr} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           )}
         </article>

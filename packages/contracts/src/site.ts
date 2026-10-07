@@ -550,14 +550,22 @@ export interface StoryFollowup {
 export interface StoryFollowupsResponse { items: StoryFollowup[]; more: boolean }
 
 /**
- * /tools/:id payload. Same shape as the /items/:id detail, plus two extras:
+ * /tools/:id payload. Same shape as the /items/:id detail, plus four extras:
  * - `updates`: siblings published in the last 7 days that share at least one tag (no canonical
  *   tools/tools_versions schema yet, so "same tool update" is approximated by tag overlap ≥ 1)
  * - `related`: top-scoring siblings whose tags intersect this item's tags in ≥ 2 places
+ * - `relatedPapers`: arXiv papers cross-axis-linked via `tool_papers` (FIX-AA.2). Same shape
+ *   as the /papers list cards (PaperSummary) so the /tools/:id page can reuse PaperSiblingCard.
+ *   Empty when the tool has no linked papers — the UI hides the section rather than rendering
+ *   an empty box (defensive, mirrors papers.$id.tsx 的反向发现 convention).
+ * - `relatedPrompts`: prompt_items reachable from this tool via tool_papers → papers →
+ *   paper_prompts (no direct tool_prompts join exists today). Empty when no rows link.
  */
 export interface SiteToolDetail extends SiteItemDetail {
   updates: FeedItemSummary[];
   related: FeedItemSummary[];
+  relatedPapers: PaperSummary[];
+  relatedPrompts: PromptCard[];
 }
 
 /** All issue keys keep numbering and calendars stable; closed daily months omit their titles. */

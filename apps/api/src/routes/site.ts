@@ -7,7 +7,7 @@ import { exportMarkdown, loadItemDetail, siteItemDetail } from "@aihot/backend/p
 import { loadPool, SearchBusyError } from "@aihot/backend/publication/pool";
 import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
-import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
+import { loadTools, loadToolDetail, loadToolDiscover } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
 import { loadPapers, loadPaperDetail, loadPaperDiscover, loadPaperSiblings } from "@aihot/backend/publication/papers";
 import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
@@ -195,6 +195,17 @@ export function registerSite(app: FastifyInstance) {
     const result = await loadToolDetail(id, undefined, true);
     if (result.kind === "not_found") return sendProblem(req, reply, { status: 404, code: "not_found", detail: "tool not found", cacheControl: "public, max-age=60" });
     return sendJsonWithEtag(req, reply, result.detail, { etagPrefix: "tool-original", cacheControl: "public, max-age=60, s-maxage=60" });
+  }));
+
+  // FIX-AA.2 — /tools/:id "反向发现" panel. Returns up to 6 cross-axis-linked papers + 6
+  // cross-axis-linked prompts. Both lists may be empty (no joins yet); the UI hides the whole
+  // section rather than rendering an empty box. Same cache shape as /api/site/papers/:id/discover
+  // — public, 5 min — so the SSR loader can rely on a single cache key per (id, scope).
+  app.get("/api/site/tool/:id/discover", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "tool not found" });
+    const data = await loadToolDiscover(id);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "tool-discover", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   app.get("/api/site/stories/:publicId/followups", siteHandler(async (req, reply) => {
