@@ -25,7 +25,9 @@ const DEFAULT_WINDOW_DAYS = 30;
 const MIN_WINDOW_DAYS = 1;
 const MAX_WINDOW_DAYS = 180;
 
-interface PaperRow {
+/** Internal row shape for a single paper from the `papers` table. Exported so sibling modules
+ *  (FIX-AA.4 loadDiscoverTriples, FIX-AA.3 loadPromptRelatedPapers) can reuse toPaperSummary. */
+export interface PaperRow {
   arxiv_id: string;
   title_en: string;
   title_zh: string | null;

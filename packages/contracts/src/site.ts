@@ -720,7 +720,19 @@ export interface DiscoverResponse {
   tools: DiscoverBlock<FeedItemSummary>;
   papers: DiscoverBlock<PaperSummary>;
   prompts: DiscoverBlock<PromptCard>;
+  /** FIX-AA.4 — 三角联动 trial: 一个 join key 同时串起一篇 paper、一个 tool、一个 prompt。
+   *  数据源是 tool_papers + paper_prompts 两表反向 join 出的 thread;今天 join 表空 → 空数组。
+   *  worker job 启跑 join 后 section 自动填充。空数组 → UI 整段不渲染(防御性,Lesson 13c)。 */
+  triples: DiscoverTriple[];
   generatedAt: string;
+}
+
+/** FIX-AA.4 — 三角联动 trial card 三联节点。一个 paper + 一个 tool + 一个 prompt
+ *  共用一个 arxiv_id 串起;UI 渲染为一行三联卡,每个节点独立跳 detail page。 */
+export interface DiscoverTriple {
+  paper: PaperSummary;
+  tool: FeedItemSummary;
+  prompt: PromptCard;
 }
 
 export interface PromptsQuery {
