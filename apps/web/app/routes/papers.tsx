@@ -6,7 +6,7 @@ import { SITE } from "@aihot/industry/site";
 import type { PaperFilters as PaperFiltersContract, PaperStatus, PaperSummary, PapersResponse } from "@aihot/contracts/site";
 import { Link, useLoaderData, useSearchParams } from "react-router";
 import { useMemo } from "react";
-import { apiGet } from "../lib/api.server";
+import { ApiError, apiGet } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
 import { beijingDate } from "@aihot/contracts/time";
 import { AsideCard, ReadingLayout } from "../components/ui/Page";
@@ -36,8 +36,30 @@ export async function loader({ request }: { request: Request }) {
   if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
   const path = `/api/site/papers${qs ? `?${qs}` : ""}`;
-  const data = await apiGet<PapersResponse>(path, { signal: request.signal });
-  return data;
+  try {
+    return await apiGet<PapersResponse>(path, { signal: request.signal });
+  } catch (err) {
+    // FIX-Z.3: graceful cursor-staleness fallback. The bind hash in
+    // `binding(q)` (publication/papers.ts) covers {category, tag, windowDays, limit}. A cursor
+    // minted for one query is rejected by the api (HTTP 400, code='invalid_cursor') when the
+    // reader reaches a URL whose other params produce a different hash — chip click, hand-edited
+    // URL, copy/paste from an earlier session, etc. React Router surfaces the 400 as 500 to the
+    // reader. Drop the stale cursor and refetch the new query's first page (same contract as
+    // PaperFilters BIND_KEYS — the chip row already does this on click; the loader handles the
+    // remaining direct-arrival paths: hand-typed URL, share link, browser back/forward across a
+    // category switch, SSR via stale link).
+    //
+    // Only retries on 400 / invalid_cursor — other failures (network, 5xx, malformed JSON)
+    // bubble up unchanged.
+    if (err instanceof ApiError && err.status === 400 && err.code === "invalid_cursor" && cursor) {
+      const paramsNoCursor = new URLSearchParams(params);
+      paramsNoCursor.delete("cursor");
+      const qsRetry = paramsNoCursor.toString();
+      const pathRetry = `/api/site/papers${qsRetry ? `?${qsRetry}` : ""}`;
+      return await apiGet<PapersResponse>(pathRetry, { signal: request.signal });
+    }
+    throw err;
+  }
 }
 
 export function meta() {
