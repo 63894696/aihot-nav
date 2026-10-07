@@ -17,6 +17,12 @@ const WINDOWS = [
   { value: 90, label: "90 天" },
 ] as const;
 
+// FIX-Z.2: keys whose change invalidates the next-page cursor. Mirrors the bind fields in
+// packages/backend/src/publication/papers.ts `binding(q)` (category, tag, windowDays, limit).
+// We only expose category + windowDays as filter chips today, so this is the practical subset.
+// limit is not a chip so it can't appear here.
+const BIND_KEYS: ReadonlySet<string> = new Set(["category", "windowDays"]);
+
 export interface PaperFiltersProps {
   active: { category: string | null; windowDays: number };
 }
@@ -32,6 +38,12 @@ export function PaperFilters({ active }: PaperFiltersProps) {
       if (v === null || v === "") next.delete(k);
       else next.set(k, String(v));
     }
+    // FIX-Z.2: when the reader changes a filter that participates in the cursor's bind
+    // (category / windowDays — see `binding(q)` in publication/papers.ts), the old cursor was
+    // minted under a different query hash, so the api rejects it with `invalid_cursor`.
+    // Surfacing a 500 to the reader is unacceptable for a chip click — just drop the stale
+    // cursor and let the loader fetch the new query's first page.
+    if (Object.keys(overrides).some((k) => BIND_KEYS.has(k))) next.delete("cursor");
     return `?${next.toString()}`;
   }
 
