@@ -169,7 +169,7 @@ export async function loadPapers(q: PapersQuery = {}): Promise<PapersResponse> {
   };
 }
 
-function toPaperSummary(r: PaperRow): PaperSummary {
+export function toPaperSummary(r: PaperRow): PaperSummary {
   const MAX_AUTHORS = 6;
   const authors = r.authors.length > MAX_AUTHORS ? [...r.authors.slice(0, MAX_AUTHORS), "et al."] : r.authors;
   return {

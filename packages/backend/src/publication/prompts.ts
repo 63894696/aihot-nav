@@ -20,10 +20,12 @@
 //   loadPromptDetail now returns `comments: []` + `commentFetchStatus: 'ok'` so the wire shape
 //   stays stable. The detail page UX path "原帖暂无评论。" stays the same.
 
-import type { PromptCard, PromptDetail, PromptCategory, PromptsQuery, PromptsResponse, PromptSourceKind } from "@aihot/contracts/site";
+import type { FeedItemSummary, PaperSummary, PromptCard, PromptDetail, PromptCategory, PromptsQuery, PromptsResponse, PromptSourceKind } from "@aihot/contracts/site";
 import { PROMPT_CATEGORIES } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
+import { toFeedItemSummary, type ItemRow } from "./items.ts";
+import { toPaperSummary } from "./papers.ts";
 
 const DEFAULT_LIMIT = 24;
 const MIN_LIMIT = 1;
@@ -108,10 +110,19 @@ export async function loadPromptDetail(id: string): Promise<PromptDetail | null>
   const card = readPromptMeta(row);
   if (!card) return null;
 
+  // FIX-AA.3 — populate the reverse-discovery panel directly on the detail object. This avoids
+  // a second SSR fetch on the /prompts/:id page (the web loader already issues one for the
+  // discover endpoint, but the api consumer of `loadPromptDetail` — if any — would otherwise
+  // see a wire shape missing the two new keys). Best-effort: SQL throw on either join returns
+  // [] so a join-table outage degrades to "panel hides" rather than 500.
+  const { relatedPapers, relatedTools } = await loadPromptDiscover(id);
+
   return {
     ...card,
     promptText: row.prompt_text,
     originalPostId: row.original_post_id,
+    relatedPapers,
+    relatedTools,
   };
 }
 
@@ -143,4 +154,98 @@ export function readPromptMeta(row: PromptRow): PromptCard | null {
 function normaliseSourceKind(kind: string): PromptSourceKind {
   if (kind === "rss" || kind === "external" || kind === "searxng_search" || kind === "manual") return kind;
   return "external";
+}
+
+// ============================================================================
+// FIX-AA.3 — /prompts/:id "反向发现" panel
+// ============================================================================
+//
+// Given a prompt id (numeric, as a string), return the cross-axis items the reader might want to
+// see next:
+//   - relatedPapers: arXiv papers linked to this prompt via paper_prompts (capped at 6). Uses
+//     the same PaperSummary shape as /papers list cards so /prompts/:id can reuse PaperSiblingCard.
+//   - relatedTools: tools reachable from this prompt via paper_prompts → arxiv_id → tool_papers →
+//     tools (2-hop; no direct prompt_prompts join exists today). FeedItemSummary because that's
+//     the canonical /tools card shape.
+//
+// Both lists return [] when no rows match — the /prompts/:id detail page hides the whole panel
+// rather than rendering an empty box (Lesson 13c: every cross-axis detail page renders-or-hides
+// the same way).
+//
+// Best-effort semantics: any throw inside the SQL blocks is caught and converted to []. The
+// /prompts/:id detail page must not 500 because a join table failed to query — losing the
+// related panel is acceptable, losing the page is not. (loadPromptDiscover wraps each block in
+// a try/catch as defense in depth.)
+//
+// Why a separate helper instead of inlining into loadPromptDetail: keeps the main detail query
+// (one row + promptText) hot and small, and the related SQL is independent enough to unit-test
+// in isolation. The 6-row caps keep the entire detail page cheap even when a prompt is heavily
+// linked.
+const PROMPT_DISCOVER_LIMIT = 6;
+
+export async function loadPromptDiscover(promptId: string): Promise<{ relatedPapers: PaperSummary[]; relatedTools: FeedItemSummary[] }> {
+  if (!/^\d{1,20}$/.test(promptId)) return { relatedPapers: [], relatedTools: [] };
+  const numericId = Number(promptId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return { relatedPapers: [], relatedTools: [] };
+  const [papers, tools] = await Promise.all([
+    loadPromptRelatedPapers(numericId),
+    loadPromptRelatedTools(numericId),
+  ]);
+  return { relatedPapers: papers, relatedTools: tools };
+}
+
+async function loadPromptRelatedPapers(promptId: number): Promise<PaperSummary[]> {
+  try {
+    const rows = await sql<Array<Pick<{
+      arxiv_id: string; title_en: string; title_zh: string | null; abstract_en: string; abstract_zh: string | null;
+      authors: string[]; primary_category: string; published_at: Date; abs_url: string; status: PaperSummary["status"];
+    }, "arxiv_id" | "title_en" | "title_zh" | "abstract_en" | "abstract_zh" | "authors" | "primary_category" | "published_at" | "abs_url" | "status">>>`
+      SELECT arxiv_id, title_en, title_zh, abstract_en, abstract_zh, authors, primary_category, published_at, abs_url, status
+      FROM papers
+      WHERE arxiv_id IN (SELECT arxiv_id FROM paper_prompts WHERE prompt_id = ${promptId})
+      ORDER BY (CASE WHEN status = 'translated' THEN 0 ELSE 1 END),
+               published_at DESC,
+               arxiv_id DESC
+      LIMIT ${PROMPT_DISCOVER_LIMIT}`;
+    return rows.map(toPaperSummary);
+  } catch {
+    return [];
+  }
+}
+
+async function loadPromptRelatedTools(promptId: number): Promise<FeedItemSummary[]> {
+  // 2-hop: prompt_id → paper_prompts → arxiv_id → tool_papers → tools (publications). The
+  // column list mirrors loadPaperRelatedTools (FIX-AA.2 in papers.ts) verbatim so we reuse
+  // toFeedItemSummary to produce the canonical /tools card surface. Visibility + indexable gates
+  // ensure we never surface admin-only or noindex rows by accident.
+  try {
+    const rows = await sql<ItemRow[]>`
+      SELECT
+        p.article_id AS id, p.revision, p.title, p.original_title, p.summary, p.reason, p.category, p.tags, p.score,
+        p.selected, p.eligible, p.channel, p.url, p.published_at, p.discovered_at, p.timeline_at, p.sort_at,
+        p.first_party, p.visibility, p.body_mode, p.syndicate, p.indexable, p.visible_after, p.backfill,
+        p.fact_id, p.story_id,
+        s.id AS source_id, s.name AS source_name, s.kind AS source_kind, s.participation_mode AS source_mode,
+        s.icon_url AS source_icon,
+        a.x_post, a.author, a.language, a.raw AS article_raw,
+        st.public_id::text AS story_public_id, st.title AS story_title,
+        CASE WHEN p.channel = 'x' THEN tr.body_text END AS zh_text,
+        qt.text_zh AS quoted_zh
+      FROM tool_papers tp
+      JOIN publications p ON p.article_id = tp.article_id
+      JOIN sources s ON s.id = p.source_id
+      JOIN articles a ON a.id = p.article_id
+      LEFT JOIN stories st ON st.id = p.story_id AND st.merged_into IS NULL
+      LEFT JOIN translations tr ON tr.article_id = p.article_id AND tr.lang = 'zh' AND tr.revision >= a.revision
+      LEFT JOIN quote_translations qt ON p.channel = 'x' AND qt.tweet_id = substring(a.x_post->'quoted'->>'url' from '/status/([0-9]+)')
+      WHERE tp.arxiv_id IN (SELECT arxiv_id FROM paper_prompts WHERE prompt_id = ${promptId})
+        AND p.discovered_at IS NOT NULL
+        AND p.visibility = 'public'
+        AND p.indexable = true
+      ORDER BY tp.created_at DESC, p.sort_at DESC, p.article_id DESC
+      LIMIT ${PROMPT_DISCOVER_LIMIT}`;
+    return rows.map(toFeedItemSummary);
+  } catch {
+    return [];
+  }
 }

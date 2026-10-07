@@ -1,8 +1,12 @@
 // /prompts/:id — W5-3 prompt detail page. Full promptText (not truncated), useCase, original
 // post link, and the original-page comments rendered as a quiet thread. No model call here —
 // readers opening a card get cached prompt text + a short list of comments.
+//
+// FIX-AA.3 — adds the "反向发现" panel after 使用说明. Cross-axis join: prompt_id → paper_prompts
+// → arxiv_id (relatedPapers) + arxiv_id → tool_papers → tools (relatedTools, 2-hop). Wire shape
+// always carries both keys; UI hides the section when both lists are empty (Lesson 13c).
 import { SITE } from "@aihot/industry/site";
-import { PROMPT_CATEGORY_LABELS, type PromptDetail } from "@aihot/contracts/site";
+import { PROMPT_CATEGORY_LABELS, type FeedItemSummary, type PaperSummary, type PromptDetail } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/prompts.$id";
 import { useState } from "react";
@@ -10,15 +14,39 @@ import { loadOr404 } from "../lib/api.server";
 import { pageMeta, breadcrumbLd } from "../lib/seo";
 import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { AsideCard, ArticleLayout } from "../components/ui/Page";
-import { IconArrowLeft, IconCopy, IconExternal } from "../components/icons";
+import { IconArrowLeft, IconArrowRight, IconCopy, IconExternal } from "../components/icons";
+import { PaperSiblingCard } from "../features/papers/PaperSiblingCard";
 
 export function headers() {
   return { "Cache-Control": "public, max-age=0, s-maxage=300, stale-while-revalidate=600" };
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  return loadOr404<PromptDetail>(`/api/site/prompts/${encodeURIComponent(params.id)}`, { signal: request.signal });
+  const data = await loadOr404<PromptDetail>(`/api/site/prompts/${encodeURIComponent(params.id)}`, { signal: request.signal });
+  // FIX-AA.3 — fetch the cross-axis discover panel in parallel. Defensive parse: any shape drift
+  // degrades to empty arrays (mirrors the Lesson 13c contract for /tools/:id discover). We never
+  // throw here — losing the panel beats a 5xx on the detail page.
+  const apiOrigin = new URL(request.url).origin;
+  let relatedPapers: RelatedPapersForView = [];
+  let relatedTools: RelatedToolsForView = [];
+  try {
+    const res = await fetch(`${apiOrigin}/api/site/prompt/${encodeURIComponent(params.id)}/discover`, { signal: request.signal });
+    if (res.ok) {
+      const body = await res.json() as { relatedPapers?: unknown; relatedTools?: unknown };
+      relatedPapers = Array.isArray(body.relatedPapers) ? body.relatedPapers as RelatedPapersForView : [];
+      relatedTools = Array.isArray(body.relatedTools) ? body.relatedTools as RelatedToolsForView : [];
+    }
+  } catch {
+    // Swallow — same defensive pattern as /tools/:id discover loader.
+  }
+  return { ...data, relatedPapers, relatedTools };
 }
+
+// FIX-AA.3 — narrow the relatedPapers/relatedTools shapes for the SSR view. The api's discover
+// response always carries both as arrays, but a future backend shape drift must not crash the page
+// — narrow only enough for what the UI renders.
+type RelatedPapersForView = PaperSummary[];
+type RelatedToolsForView = FeedItemSummary[];
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const data = loaderData as PromptDetail | undefined;
@@ -167,6 +195,71 @@ export default function PromptDetailPage() {
           部分提示词依赖特定模型或工具(如 GPT / Claude / Copilot),请根据实际情况调整。
         </p>
       </section>
+
+      {/* FIX-AA.3 — reverse-discovery panel. Hides entirely when both lists are empty so the
+          reader does not see an empty "反向发现" box (mirrors /tools/:id convention). Each list
+          gets its own sub-h3 so a single populated block doesn't look like it owns the whole panel. */}
+      {d.relatedPapers.length > 0 || d.relatedTools.length > 0 ? (
+        <section className="card mt-4 scroll-mt-6 px-5 py-5 lg:px-7 lg:py-6">
+          <header className="mb-3 flex items-center justify-between">
+            <h2 className="text-[14px] font-semibold text-ink">反向发现</h2>
+            <span className="text-[11.5px] text-ink-4">这个提示词用过的相关论文与工具</span>
+          </header>
+          {d.relatedPapers.length > 0 ? (
+            <>
+              <h3 className="mb-2 text-[12px] font-medium text-ink-3">相关论文</h3>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {d.relatedPapers.slice(0, 6).map((p) => (
+                  <li key={p.id}>
+                    <PaperSiblingCard
+                      paper={{
+                        id: p.id,
+                        titleZh: p.titleZh,
+                        titleEn: p.titleEn,
+                        primaryCategory: p.primaryCategory,
+                        publishedAt: p.publishedAt,
+                        status: p.status,
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {d.relatedTools.length > 0 ? (
+            <div className={d.relatedPapers.length > 0 ? "mt-4" : ""}>
+              <h3 className="mb-2 text-[12px] font-medium text-ink-3">相关工具</h3>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {d.relatedTools.slice(0, 6).map((t) => (
+                  <li key={t.id}>
+                    <Link
+                      to={`/tools/${encodeURIComponent(t.id)}`}
+                      prefetch="intent"
+                      className="card flex h-full flex-col gap-1.5 px-4 py-3.5 transition hover:border-accent/40 hover:shadow-sm"
+                    >
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        {t.category ? (
+                          <span className="rounded bg-accent/10 px-1.5 py-px font-medium text-accent">{t.category}</span>
+                        ) : null}
+                        {t.channel ? (
+                          <span className="rounded bg-bg-muted px-1.5 py-px text-ink-4">{t.channel}</span>
+                        ) : null}
+                      </div>
+                      <div className="text-[13px] font-semibold leading-[1.4] text-ink-2 line-clamp-2">{t.title}</div>
+                      {t.summary ? (
+                        <div className="text-[12px] leading-[1.6] text-ink-4 line-clamp-2">{t.summary}</div>
+                      ) : null}
+                      <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-accent">
+                        查看工具 <IconArrowRight size={11} />
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </ArticleLayout>
   );
 }

@@ -10,7 +10,7 @@ import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadTools, loadToolDetail, loadToolDiscover } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
 import { loadPapers, loadPaperDetail, loadPaperDiscover, loadPaperSiblings } from "@aihot/backend/publication/papers";
-import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
+import { loadPrompts, loadPromptDetail, loadPromptDiscover } from "@aihot/backend/publication/prompts";
 import { loadCopilotAssets, loadCopilotAssetDetail } from "@aihot/backend/publication/awesome-copilot";
 import { loadDiscover } from "@aihot/backend/publication/discover";
 import { PROMPT_CATEGORIES, type PaperSortKey, type PromptCategory } from "@aihot/contracts/site";
@@ -347,6 +347,18 @@ export function registerSite(app: FastifyInstance) {
     const d = await loadPromptDetail(id);
     if (!d) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "prompt not found" });
     return sendJsonWithEtag(req, reply, d, { etagPrefix: "prompt", cacheControl: "public, max-age=300, s-maxage=300" });
+  }));
+
+  // FIX-AA.3 — /prompts/:id "反向发现" panel. Cross-axis join: prompt_id → paper_prompts →
+  // arxiv_id (related papers directly), then arxiv_id → tool_papers → tools (2-hop). Both lists
+  // may be []; the wire shape always carries both keys (mirrors papers/tool discover endpoints).
+  // We accept the same numeric id regex as /api/site/prompts/:id. Missing id is a 200 + empty
+  // arrays (defensive — losing the panel beats a 500 on the detail page; same as tool discover).
+  app.get("/api/site/prompt/:id/discover", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!/^\d{1,20}$/.test(id)) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "prompt not found" });
+    const data = await loadPromptDiscover(id);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "prompt-discover", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   // W5-3 code-prompts expansion: github.com/github/awesome-copilot read layer.

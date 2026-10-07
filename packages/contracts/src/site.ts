@@ -659,6 +659,16 @@ export interface PromptDetail extends PromptCard {
   /** Full prompt text (not truncated). */
   promptText: string;
   originalPostId: string | null;
+  /** FIX-AA.3 — "反向发现": arXiv papers cross-axis-linked via `paper_prompts`. We reuse
+   *  PaperSummary because that's what /papers cards render; the /prompts/:id page drops in
+   *  PaperSiblingCard the same way /tools/:id does. Empty when the join table is empty (today:
+   *  zero production rows — the panel populates as the worker writes to paper_prompts from
+   *  the future FIX-AA.4 follow-up). UI hides the section when both lists are empty. */
+  relatedPapers: PaperSummary[];
+  /** FIX-AA.3 — "反向发现": tools reachable from this prompt via paper_prompts → arxiv_id →
+   *  tool_papers → tools (2-hop; no direct prompt_papers join exists today). Reuses
+   *  FeedItemSummary because that's the canonical /tools card shape. */
+  relatedTools: FeedItemSummary[];
 }
 
 export interface PromptsResponse {
