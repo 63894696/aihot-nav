@@ -210,11 +210,25 @@ export interface PaperSummary {
 export interface PaperFilters {
   category: string | null;
   tag: string | null;
+  /** Active search query echoed back so the search input can mirror it. */
+  q: string | null;
+  /** Active sort key echoed back. */
+  sort: PaperSortKey;
 }
+
+/** Sort options for /papers. Keep the wire form the same as the URL query value so the search
+ *  field and chip row can `<Link to="?sort=...">` without a separate mapping. */
+export type PaperSortKey = "published_at" | "hf_upvotes" | "translated";
 
 export interface PapersQuery {
   category?: string | null;
   tag?: string | null;
+  /** FIX-AA-A — full-text-ish search across title + abstract + authors. Empty / undefined means
+   *  "no search filter" and the load layer skips the ILIKE clauses. */
+  q?: string | null;
+  /** FIX-AA-A — sort key. Defaults to "published_at" (which is what the list returns today when
+   *  the reader does not pick a sort). */
+  sort?: PaperSortKey;
   windowDays?: number;
   limit?: number;
   cursor?: string | null;
@@ -229,6 +243,9 @@ export interface PapersResponse {
    *  arXiv drop appears promptly. */
   refreshAt: string | null;
   windowDays: number;
+  /** Page size echoed back so the UI's chips + client append can mirror the loader's choice.
+   *  FIX-AA-A — added when `limit` became a first-class URL parameter (was hard-coded 24). */
+  limit: number;
   generatedAt: string;
 }
 
@@ -268,6 +285,14 @@ export interface PaperDetail extends PaperSummary {
    *  file is missing on disk (DB says published but repo file vanished — front-end shows
    *  a graceful "draft missing" note). */
   commentaryHtml: { html: string; empty: boolean } | null;
+  /** FIX-AA-B — "反向发现": tools cross-axis-linked via tool_papers. We reuse FeedItemSummary
+   *  because that's what loadTools returns (the cross-axis shape is identical to the /tools
+   *  card: id/title/summary/tags/score/etc). [] when no links exist or the join table is
+   *  empty. UI hides the whole section when both lists are empty. */
+  relatedTools: FeedItemSummary[];
+  /** FIX-AA-B — "反向发现": prompts cross-axis-linked via paper_prompts (if present).
+   *  [] when the join table is absent or empty. */
+  relatedPrompts: PromptCard[];
 }
 
 export interface OutlineEntry {

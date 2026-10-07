@@ -9,7 +9,7 @@ import { loadTimeline } from "@aihot/backend/publication/timeline";
 import { loadDaily } from "@aihot/backend/publication/daily";
 import { loadTools, loadToolDetail } from "@aihot/backend/publication/tools";
 import { loadChangelog } from "@aihot/backend/publication/changelog";
-import { loadPapers, loadPaperDetail, loadPaperSiblings } from "@aihot/backend/publication/papers";
+import { loadPapers, loadPaperDetail, loadPaperDiscover, loadPaperSiblings } from "@aihot/backend/publication/papers";
 import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
 import { loadCopilotAssets, loadCopilotAssetDetail } from "@aihot/backend/publication/awesome-copilot";
 import { loadDiscover } from "@aihot/backend/publication/discover";
@@ -284,6 +284,15 @@ export function registerSite(app: FastifyInstance) {
     const id = (req.params as { id: string }).id;
     const items = await loadPaperSiblings(id, 6);
     return sendJsonWithEtag(req, reply, { items }, { etagPrefix: "paper-siblings", cacheControl: "public, max-age=300, s-maxage=300" });
+  }));
+
+  // FIX-AA-B — /papers/:id "反向发现" panel. Returns up to 6 cross-axis-linked tools + 6
+  // cross-axis-linked prompts. Both lists may be empty (no joins yet); the UI hides the whole
+  // section rather than rendering an empty box. Same cache shape as /siblings — public, 5 min.
+  app.get("/api/site/papers/:id/discover", siteHandler(async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const data = await loadPaperDiscover(id);
+    return sendJsonWithEtag(req, reply, data, { etagPrefix: "paper-discover", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   // W5-3 — prompt column. Public read layer for reusable prompts collected from public posts.

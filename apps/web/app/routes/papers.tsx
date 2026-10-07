@@ -38,11 +38,22 @@ export async function loader({ request }: { request: Request }) {
   if (category) params.set("category", category);
   const windowDays = url.searchParams.get("windowDays");
   if (windowDays) params.set("windowDays", windowDays);
-  const limit = url.searchParams.get("limit") ?? "24";
-  params.set("limit", limit);
+  // FIX-AA-A — search query forwarded verbatim. Backend trims + lowercases for the bind hash
+  // (see publication/papers.ts `binding(q)`); the loader passes through so the chip / select
+  // URL never silently mutates the reader's query.
+  const q = url.searchParams.get("q");
+  if (q) params.set("q", q);
+  // Sort key — only forward when not the default (published_at). Keeps the URL tidy for the
+  // 80% of readers who never touch the sort row, and lets the chip-click path omit the key.
+  const sort = url.searchParams.get("sort");
+  if (sort && sort !== "published_at") params.set("sort", sort);
+  // Page size — same convention: default 24 is implicit, anything else is explicit.
+  const limit = url.searchParams.get("limit");
+  if (limit && limit !== "24") params.set("limit", limit);
+  params.set("limit", limit ?? "24");
   // FIX-Z.4 deliberately does NOT forward cursor from the URL: load-more append is now purely
-  // client-side, and the URL only carries shareable filter state (category, windowDays). See
-  // papers-pagination.test.ts and the Lesson 10 anchor for the trade-off.
+  // client-side, and the URL only carries shareable filter state (category, windowDays, q,
+  // sort, limit). See papers-pagination.test.ts and the Lesson 10 anchor for the trade-off.
   const qs = params.toString();
   const path = `/api/site/papers${qs ? `?${qs}` : ""}`;
   try {
@@ -101,14 +112,18 @@ export default function PapersPage() {
   // FIX-Z.4 — client-side load-more. We never push the cursor into the URL: chip clicks are
   // the only navigation source, and they go through React Router (which already triggers a full
   // loader re-run for the new filter state — items reset to page 1 of the new query).
+  // FIX-AA-A — limit / q / sort now ride in the URL too. buildPagePath mirrors the loader's
+  // shareable state so the next-page fetch keeps the same filter window the reader saw.
   const buildPagePath = useCallback((cursor: string | null): string => {
     const sp = new URLSearchParams();
     if (filters.category) sp.set("category", filters.category);
     sp.set("windowDays", String(initial.windowDays));
-    sp.set("limit", "24");
+    sp.set("limit", String(initial.limit ?? 24));
+    if (filters.q) sp.set("q", filters.q);
+    if (filters.sort && filters.sort !== "published_at") sp.set("sort", filters.sort);
     if (cursor) sp.set("cursor", cursor);
     return `/api/site/papers${sp.toString() ? `?${sp.toString()}` : ""}`;
-  }, [filters.category, initial.windowDays]);
+  }, [filters.category, filters.q, filters.sort, initial.windowDays, initial.limit]);
 
   const loadMore = useCallback(async () => {
     if (loadStatus === "loading" || loadStatus === "done") return;
@@ -142,8 +157,14 @@ export default function PapersPage() {
   });
 
   const active = useMemo(
-    () => ({ category: filters.category ?? null, windowDays: initial.windowDays }),
-    [filters.category, initial.windowDays],
+    () => ({
+      category: filters.category ?? null,
+      windowDays: initial.windowDays,
+      q: filters.q ?? null,
+      sort: filters.sort ?? "published_at",
+      limit: initial.limit ?? 24,
+    }),
+    [filters.category, filters.q, filters.sort, initial.windowDays, initial.limit],
   );
 
   const counts = useMemo(() => {
@@ -192,7 +213,9 @@ export default function PapersPage() {
       <header className="mb-5">
         <h1 className="text-[22px] font-semibold leading-tight text-ink">论文解读</h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">
-          arXiv 论文中文摘要 + 关键要点 · 最近 {initial.windowDays} 天 · 已显示 {items.length} 篇
+          arXiv 论文中文摘要 + 关键要点 · 最近 {initial.windowDays} 天
+          {filters.q && <> · 关键词 <span className="text-ink-2">「{filters.q}」</span></>}
+          · 已显示 {items.length} 篇
         </p>
       </header>
 

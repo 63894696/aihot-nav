@@ -8,7 +8,7 @@
 // endpoint stays parallel to the detail (GET /api/site/papers/:id/siblings) so #5 can extend it
 // without breaking callers.
 import { SITE } from "@aihot/industry/site";
-import type { PaperDetail, PaperCommentarySource, PaperSummary } from "@aihot/contracts/site";
+import type { FeedItemSummary, PaperDetail, PaperCommentarySource, PaperSummary, PromptCard as PromptCardType } from "@aihot/contracts/site";
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/papers.$id";
 import { useState } from "react";
@@ -19,6 +19,8 @@ import { beijingDate } from "@aihot/contracts/time";
 import { AsideCard, ArticleLayout } from "../components/ui/Page";
 import { IconArrowLeft, IconCopy, IconExternal } from "../components/icons";
 import { PaperSiblingCard } from "../features/papers/PaperSiblingCard";
+import { FeedItem } from "../features/feed/FeedItem";
+import { PromptCard } from "../features/prompts/PromptCard";
 
 export function headers() {
   return { "Cache-Control": "public, max-age=0, s-maxage=300, stale-while-revalidate=600" };
@@ -37,7 +39,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   } catch {
     // Degrade silently — the parent page still renders.
   }
-  return { detail, siblings };
+  // FIX-AA-B — reverse discovery. Parallel to siblings; best-effort (the backend wraps each
+  // block in try/catch and returns [] on failure). Both lists may be [] — the UI hides the
+  // section entirely when both are empty.
+  let relatedTools: FeedItemSummary[] = [];
+  let relatedPrompts: PromptCardType[] = [];
+  try {
+    const r = await apiGet<{ relatedTools: FeedItemSummary[]; relatedPrompts: PromptCardType[] }>(
+      `/api/site/papers/${encodeURIComponent(params.id)}/discover`,
+      { signal: request.signal },
+    );
+    relatedTools = Array.isArray(r.relatedTools) ? r.relatedTools : [];
+    relatedPrompts = Array.isArray(r.relatedPrompts) ? r.relatedPrompts : [];
+  } catch {
+    // Degrade silently — the parent page still renders.
+  }
+  return { detail, siblings, relatedTools, relatedPrompts };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -77,7 +94,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function PaperDetailPage() {
-  const { detail: d, siblings } = useLoaderData<typeof loader>();
+  const { detail: d, siblings, relatedTools, relatedPrompts } = useLoaderData<typeof loader>();
   const [copiedId, setCopiedId] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
@@ -264,6 +281,44 @@ export default function PaperDetailPage() {
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {/* FIX-AA-B — 反向发现 (related discovery). Section is hidden entirely when both lists
+          are empty (defensive — UI convention). Each block follows the page's reading-layout
+          language: a header row with a section title, then a grid of cards. linkPrefix="/tools"
+          on FeedItem keeps the related-tool card clicking through to /tools/:id (catalog rails)
+          instead of /items/:id (the default for the standalone reading view). */}
+      {(relatedTools.length > 0 || relatedPrompts.length > 0) && (
+        <section className="mt-6">
+          <header className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="text-[14px] font-semibold text-ink">反向发现 · 这篇论文相关的工具与提示词</h2>
+            <Link to="/all" className="text-[12px] text-accent hover:underline">
+              去交叉发现 →
+            </Link>
+          </header>
+
+          {relatedTools.length > 0 && (
+            <div className="mb-4">
+              <h3 className="mb-2 text-[12.5px] font-medium text-ink-3">关联工具 · {relatedTools.length}</h3>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {relatedTools.map((t) => (
+                  <FeedItem key={t.id} item={t} linkPrefix={"/tools" as `/tools/${string}`} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {relatedPrompts.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-[12.5px] font-medium text-ink-3">关联提示词 · {relatedPrompts.length}</h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {relatedPrompts.map((p) => (
+                  <PromptCard key={p.id} prompt={p} />
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </ArticleLayout>

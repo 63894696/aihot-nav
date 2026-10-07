@@ -33,7 +33,7 @@ const MIN_WINDOW_DAYS = 1;
 const MAX_WINDOW_DAYS = 365;
 const PROMPT_PREVIEW_CHARS = 240;
 
-interface PromptRow {
+export interface PromptRow {
   id: number;
   article_id: string | null;
   original_url: string;

@@ -30,6 +30,7 @@ import { fetchSearchQueries } from "./jobs/search-fetch.ts";
 import { fetchPromptQueries } from "./jobs/prompt-fetch.ts";
 import { fetchAwesomeCopilotAssets } from "./jobs/awesome-copilot-fetch.ts";
 import { translateCodePromptsPending } from "./jobs/code-prompts-translate.ts";
+import { archivePapersNDJSON } from "./jobs/papers-archive.ts";
 
 interface Scheduled {
   name: string;
@@ -126,6 +127,12 @@ export const SCHEDULES: Scheduled[] = [
   // LLM is not invoked at all. 30-min cadence keeps the cron noise low and still catches
   // frontmatter shifts within an hour of awesome-copilot.fetch.
   { name: "code-prompts.fetch_translations", cron: "*/30 * * * *", missed: "once", run: () => translateCodePromptsPending() },
+  // FIX-AA-C — every 10 days at 04:00 Asia/Shanghai, dump the papers table to NDJSON + push
+  // to a dedicated GitHub repo (PAPERS_ARCHIVE_GH_REPO). Status semantics: success / failed /
+  // local-only (when GH token missing). missed=once so a worker restart after a 10-day gap
+  // catches up exactly once — duplicate runs are no-ops (NDJSON content identical → empty
+  // git diff → no commit).
+  { name: "papers.archive", cron: "0 4 */10 * *", missed: "once", run: () => archivePapersNDJSON() },
 ];
 
 export async function registerSchedules(boss: PgBoss) {
