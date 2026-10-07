@@ -17,7 +17,7 @@
 import { SITE } from "@aihot/industry/site";
 import type { PaperFilters as PaperFiltersContract, PaperStatus, PaperSummary, PapersResponse } from "@aihot/contracts/site";
 import { useLoaderData } from "react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiGet } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
 import { beijingDate } from "@aihot/contracts/time";
@@ -129,9 +129,16 @@ export default function PapersPage() {
 
   // FIX-Z.4 — IntersectionObserver sentinel auto-load (button remains as a manual fallback
   // and as the visible affordance for keyboard / no-JS readers).
+  // rootMargin "1200px 0px 1200px 0px" expands the trigger zone a screen-and-a-half in each
+  // direction. The sentinel is the trailing element of the card list, so on a 4-screen page
+  // it can sit ~3000+ px below the viewport. Without that margin the observer would never
+  // see it cross from "below viewport" to "in viewport" because the reader's natural scroll
+  // velocity skips past it. 1200px is enough to fire while the reader is still mid-scroll,
+  // giving the next fetch time to land before the reader hits the bottom.
   const sentinelRef = useSentinelAutoLoad({
     enabled: loadStatus !== "done" && loadStatus !== "error" && Boolean(nextCursor),
     onIntersect: loadMore,
+    rootMargin: "1200px 0px 1200px 0px",
   });
 
   const active = useMemo(
@@ -281,21 +288,37 @@ async function apiGetClient<T>(path: string): Promise<T> {
   return data as T;
 }
 
-function useSentinelAutoLoad({ enabled, onIntersect }: { enabled: boolean; onIntersect: () => void }) {
+function useSentinelAutoLoad({
+  enabled,
+  onIntersect,
+  rootMargin = "200px 0px",
+}: {
+  enabled: boolean;
+  onIntersect: () => void;
+  rootMargin?: string;
+}) {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
+  // FIX-Z.4 — keep `onIntersect` behind a ref so the IO effect does not tear down and
+  // reconnect on every state flip (loadStatus: idle→loading→idle, nextCursor after each
+  // append, buildPagePath when filters change). A reconnect causes IO to lose its
+  // intersection transition state — if the sentinel happens to be already-intersecting at
+  // reconnect time, IO does not re-fire until the sentinel crosses 0→1 again, which the
+  // reader's natural scroll often skips past (1px at a time on smooth-trackpads).
+  const cbRef = useRef(onIntersect);
+  useEffect(() => { cbRef.current = onIntersect; }, [onIntersect]);
   useEffect(() => {
     if (!el || !enabled) return;
     const obs = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) onIntersect();
+          if (entry.isIntersecting) cbRef.current();
         }
       },
-      { rootMargin: "200px 0px" },
+      { rootMargin },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [el, enabled, onIntersect]);
+  }, [el, enabled, rootMargin]);
   return setEl;
 }
 
