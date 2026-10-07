@@ -28,6 +28,12 @@ export async function loader({ request }: { request: Request }) {
   if (windowDays) params.set("windowDays", windowDays);
   const limit = url.searchParams.get("limit") ?? "24";
   params.set("limit", limit);
+  // FIX-Z: 论文 "加载更早论文" 按钮之前不工作,因为 cursor 没有透传给 api,
+  // 导致 data.nextCursor 永远是首页 cursor,buildNextQuery 算出的 to 跟当前 URL 相同,
+  // 浏览器/React Router 把同 URL 当成 revalidate 而非 navigation,体验上等于 "刷新页面".
+  // backend publication/papers.ts 已经原生支持 q.cursor(见 decodeCursor 调用),只需透传.
+  const cursor = url.searchParams.get("cursor");
+  if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
   const path = `/api/site/papers${qs ? `?${qs}` : ""}`;
   const data = await apiGet<PapersResponse>(path, { signal: request.signal });
