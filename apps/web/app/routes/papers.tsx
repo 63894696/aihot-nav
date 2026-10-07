@@ -298,17 +298,49 @@ function EmptyState({ category, windowDays }: { category: string | null; windowD
 
 // --- helpers below are kept local so the route file is self-contained ---
 
+// FIX-Z.5 — client-side Load More retry-once mirror of FIX-Z.3. The loader's apiGet has the
+// server-side retry; without this mirror, the Load More button on the client can 400 on a
+// stale cursor and the only escape is a chip / form re-submit (which re-runs the loader — the
+// only place where 400+invalid_cursor is currently auto-recovered). Real browsers hit this
+// in three ways puppeteer-headless does not:
+//   - IntersectionObserver + button click race the same fetch (same cursor, two parallel
+//     callers; the second sees the cursor already consumed)
+//   - Long-idle tab loses a session-bound etag on a deploy between page-1 and page-2 clicks
+//   - Two tabs open on the same query racing each other
+// The defense is the same as the server side: drop the cursor and retry — page 1 of the
+// same q/sort/limit is the correct UX for a recovered cursor (the reader sees the same
+// first-page items they already saw, and the next Load More works). Without it, the reader
+// is stuck on "加载失败,点此重试" forever (the retry button calls loadMore with the same
+// stale cursor). See Lesson 13.
 async function apiGetClient<T>(path: string): Promise<T> {
-  const r = await fetch(path, { headers: { accept: "application/json" } });
-  const text = await r.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!r.ok) {
-    const code = data && typeof data === "object" && "code" in data
-      ? String((data as { code: unknown }).code ?? "")
-      : null;
-    throw new Error(`api ${r.status} ${code ?? ""}`.trim());
+  const tryFetch = async (p: string): Promise<T> => {
+    const r = await fetch(p, { headers: { accept: "application/json" } });
+    const text = await r.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!r.ok) {
+      const code = data && typeof data === "object" && "code" in data
+        ? String((data as { code: unknown }).code ?? "")
+        : null;
+      const err = new Error(`api ${r.status} ${code ?? ""}`.trim()) as Error & { status?: number; code?: string | null };
+      err.status = r.status;
+      err.code = code;
+      throw err;
+    }
+    return data as T;
+  };
+  try {
+    return await tryFetch(path);
+  } catch (err) {
+    const e = err as Error & { status?: number; code?: string | null };
+    if (e.status === 400 && e.code === "invalid_cursor" && /[?&]cursor=[^&]*/.test(path)) {
+      // Drop the cursor and try again — same q/sort/limit/windowDays/category. The chip-click
+      // path would do the same thing (BIND_KEYS drops the cursor on any filter change); we
+      // just do it eagerly here so the Load More button is self-healing.
+      const retried = path.replace(/[?&]cursor=[^&]*/, "").replace(/\?$/, "");
+      return await tryFetch(retried);
+    }
+    throw err;
   }
-  return data as T;
 }
 
 function useSentinelAutoLoad({
