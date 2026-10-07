@@ -13,7 +13,7 @@ import { loadPapers, loadPaperDetail, loadPaperDiscover, loadPaperSiblings } fro
 import { loadPrompts, loadPromptDetail } from "@aihot/backend/publication/prompts";
 import { loadCopilotAssets, loadCopilotAssetDetail } from "@aihot/backend/publication/awesome-copilot";
 import { loadDiscover } from "@aihot/backend/publication/discover";
-import { PROMPT_CATEGORIES, type PromptCategory } from "@aihot/contracts/site";
+import { PROMPT_CATEGORIES, type PaperSortKey, type PromptCategory } from "@aihot/contracts/site";
 import { COPILOT_ASSET_KINDS, type CopilotAssetKind } from "@aihot/contracts/awesome-copilot";
 import { loadStoryFollowups } from "@aihot/backend/publication/followups";
 import { loadDevelopments, loadGroupReports } from "@aihot/backend/publication/groups";
@@ -257,14 +257,21 @@ export function registerSite(app: FastifyInstance) {
   }));
 
   // W4b — arXiv paper translation-officer feed. Independent of publications; cursor on (published_at, arxiv_id).
+  // FIX-AA-A — parse q (5-field OR-ILIKE) + sort (3-mode) from the URL. Search is whitespace-tokenised
+  // server-side; multi-token AND; binding(q) includes q + sort so any cursor minted under a different
+  // query is rejected (the FIX-Z.2/3 400 invalid_cursor defence).
   app.get("/api/site/papers", siteHandler(async (req, reply) => {
     const q = looseQuery(req);
     const category = q.category?.trim() ? q.category.trim().slice(0, 20) : null;
     const tag = q.tag?.trim() ? q.tag.trim().slice(0, 60) : null;
+    const searchRaw = q.q?.trim() ? q.q.trim().slice(0, 200) : null;
+    const sortRaw = q.sort?.trim() ? q.sort.trim() : null;
+    const sort: PaperSortKey =
+      sortRaw === "hf_upvotes" || sortRaw === "translated" ? sortRaw : "published_at";
     const windowDays = Number(q.windowDays) || 30;
     const limit = Number(q.limit) || 24;
     const cursor = q.cursor || null;
-    const data = await loadPapers({ category, tag, windowDays, limit, cursor });
+    const data = await loadPapers({ category, tag, q: searchRaw, sort, windowDays, limit, cursor });
     const cc = cacheUntil(reply, 60, data.refreshAt);
     return sendJsonWithEtag(req, reply, data, { etagPrefix: "papers", cacheControl: cc });
   }));
