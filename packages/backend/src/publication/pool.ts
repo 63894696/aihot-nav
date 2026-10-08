@@ -93,36 +93,40 @@ async function loadCrossAxisCandidates(terms: string[], cap: number, db: Db): Pr
   if (terms.length === 0) return [];
   const likePatterns = terms.map((t) => `%${t}%`);
   try {
+    // FIX-BB-BUG: alias `cross` is a reserved SQL keyword (CROSS JOIN) — Postgres parses
+    // `) cross ORDER BY ...` as `) CROSS [JOIN] ... ORDER` and errors at ORDER. Renamed to
+    // `ca` and added an explicit column list to keep the projection locked at the type level.
     const rows = await db<Array<{ crossAxis: "paper" | "prompt"; id: string; title: string; summary: string | null; published_at: Date | null; category: string | null; url: string | null }>>`
-      SELECT * FROM (
-        SELECT 'paper'::text AS "crossAxis",
-               papers.arxiv_id::text AS id,
-               coalesce(papers.title_zh, papers.title_en)::text AS title,
-               coalesce(papers.abstract_zh, papers.abstract_en)::text AS summary,
-               papers.published_at,
-               papers.primary_category AS category,
-               papers.abs_url AS url
-          FROM papers
-         WHERE papers.status IN ('fetched','translated','partial')
-           AND (papers.title_en     ILIKE ANY(${likePatterns}::text[])
-             OR papers.title_zh       ILIKE ANY(${likePatterns}::text[])
-             OR papers.abstract_en    ILIKE ANY(${likePatterns}::text[])
-             OR papers.abstract_zh    ILIKE ANY(${likePatterns}::text[]))
-        UNION ALL
-        SELECT 'prompt'::text AS "crossAxis",
-               pi.article_id::text AS id,
-               coalesce(pi.use_case, substring(pi.prompt_text, 1, 80))::text AS title,
-               pi.prompt_text::text AS summary,
-               pi.captured_at AS published_at,
-               pi.category::text AS category,
-               a.url AS url
-          FROM prompt_items pi
-          JOIN articles a ON a.id = pi.article_id
-         WHERE (pi.use_case     ILIKE ANY(${likePatterns}::text[])
-             OR pi.prompt_text   ILIKE ANY(${likePatterns}::text[]))
-      ) cross
-     ORDER BY cross.published_at DESC NULLS LAST
-     LIMIT ${cap}`;
+      SELECT ca."crossAxis", ca.id, ca.title, ca.summary, ca.published_at, ca.category, ca.url
+        FROM (
+          SELECT 'paper'::text AS "crossAxis",
+                 papers.arxiv_id::text AS id,
+                 coalesce(papers.title_zh, papers.title_en)::text AS title,
+                 coalesce(papers.abstract_zh, papers.abstract_en)::text AS summary,
+                 papers.published_at,
+                 papers.primary_category AS category,
+                 papers.abs_url AS url
+            FROM papers
+           WHERE papers.status IN ('fetched','translated','partial')
+             AND (papers.title_en     ILIKE ANY(${likePatterns}::text[])
+               OR papers.title_zh       ILIKE ANY(${likePatterns}::text[])
+               OR papers.abstract_en    ILIKE ANY(${likePatterns}::text[])
+               OR papers.abstract_zh    ILIKE ANY(${likePatterns}::text[]))
+          UNION ALL
+          SELECT 'prompt'::text AS "crossAxis",
+                 pi.article_id::text AS id,
+                 coalesce(pi.use_case, substring(pi.prompt_text, 1, 80))::text AS title,
+                 pi.prompt_text::text AS summary,
+                 pi.captured_at AS published_at,
+                 pi.category::text AS category,
+                 a.url AS url
+            FROM prompt_items pi
+            JOIN articles a ON a.id = pi.article_id
+           WHERE (pi.use_case     ILIKE ANY(${likePatterns}::text[])
+               OR pi.prompt_text   ILIKE ANY(${likePatterns}::text[]))
+        ) ca
+       ORDER BY ca.published_at DESC NULLS LAST
+       LIMIT ${cap}`;
     return rows;
   } catch {
     // FIX-AA.4 lesson — defensive: any SQL throw on the cross-axis segment must NOT 500 the
