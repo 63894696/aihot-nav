@@ -114,14 +114,19 @@ async function loadCrossAxisCandidates(terms: string[], cap: number, db: Db): Pr
                OR papers.abstract_zh    ILIKE ANY(${likePatterns}::text[]))
           UNION ALL
           SELECT 'prompt'::text AS "crossAxis",
-                 pi.article_id::text AS id,
+                 -- FIX-BB-BUG-2: VPS smoke found all 44 prompt_items rows have article_id=''
+                 -- (text col, empty), so the INNER JOIN on articles dropped every prompt hit.
+                 -- Use pi.id (bigserial) as the row anchor when no article links, falling back
+                 -- to the article_id text when one exists. Site detail reads /prompts/:id and
+                 -- resolves to either a row id or article id; the detail page handles both.
+                 coalesce(nullif(pi.article_id, ''), pi.id::text)::text AS id,
                  coalesce(pi.use_case, substring(pi.prompt_text, 1, 80))::text AS title,
                  pi.prompt_text::text AS summary,
                  pi.captured_at AS published_at,
                  pi.category::text AS category,
                  a.url AS url
             FROM prompt_items pi
-            JOIN articles a ON a.id = pi.article_id
+            LEFT JOIN articles a ON a.id::text = pi.article_id
            WHERE (pi.use_case     ILIKE ANY(${likePatterns}::text[])
                OR pi.prompt_text   ILIKE ANY(${likePatterns}::text[]))
         ) ca
