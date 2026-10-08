@@ -1,10 +1,12 @@
-// Category chips + window filter + search field + sort/limit row for /papers. The page feels
-// consistent with /tools — chip group on the left, filter controls on the right. FIX-AA-A adds
-// the search row at the bottom (借鉴 shelf.html "公榜海图" 海图式侧栏: form Enter 提交, 排序 +
-// 每页切换, 不即时搜索). Search hits every change-relevant key in BIND_KEYS so changing q/sort/
-// limit drops any stale cursor (FIX-Z.2/3 defense in depth applies unchanged).
-import { Form, Link, useSearchParams } from "react-router";
-import { useEffect, useState } from "react";
+// Category chips + window filter + sort/limit row for /papers. The page feels
+// consistent with /tools — chip group on the left, filter controls on the right.
+//
+// FIX-V1 (2026-10-08) — search row removed. The cross-axis /all?q= search already covers
+// papers + prompts + tools, and the dedicated /papers search input never visibly changed
+// results from the reader's POV (root cause: /papers SSR renders an empty shell that
+// client-hydrates later; URL changes but no new cards ever appear pre-hydration). User
+// decision: rely on /all?q= for paper search, drop the in-page search box.
+import { Link, useSearchParams } from "react-router";
 
 const CATEGORIES = [
   { value: null, label: "全部" },
@@ -34,19 +36,18 @@ const LIMITS = [
   { value: 60, label: "60/页" },
 ] as const;
 
-// FIX-Z.2 + FIX-AA-A: keys whose change invalidates the next-page cursor. Mirrors the bind
-// fields in packages/backend/src/publication/papers.ts `binding(q)` (category, tag, q, sort,
-// windowDays, limit). We expose category + windowDays as chips and q as a search input; sort
-// + limit are selects (chip-less), but a reader who flips them still wants page 1 — so we
-// drop the cursor on any of these changes. Tag is reserved even though no UI surfaces it
-// today; the future-proofing costs nothing.
-const BIND_KEYS: ReadonlySet<string> = new Set(["category", "windowDays", "q", "sort", "limit", "tag"]);
+// FIX-Z.2: keys whose change invalidates the next-page cursor. Mirrors the bind
+// fields in packages/backend/src/publication/papers.ts `binding(q)` (category, tag, sort,
+// windowDays, limit). FIX-V1 removed q (no search input). We expose category + windowDays
+// as chips; sort + limit are selects (chip-less), but a reader who flips them still wants
+// page 1 — so we drop the cursor on any of these changes. Tag is reserved even though no
+// UI surfaces it today; the future-proofing costs nothing.
+const BIND_KEYS: ReadonlySet<string> = new Set(["category", "windowDays", "sort", "limit", "tag"]);
 
 export interface PaperFiltersProps {
   active: {
     category: string | null;
     windowDays: number;
-    q: string | null;
     sort: "published_at" | "hf_upvotes" | "translated";
     limit: number;
   };
@@ -57,24 +58,15 @@ export interface PaperFiltersProps {
    * via `to=` so the URL stays shareable; onChange just lets the component tear down any
    * pending fetches before the new loader replaces them.
    */
-  onChange?: (next: { category: string | null; windowDays: number; q: string | null; sort: PaperFiltersProps["active"]["sort"]; limit: number }) => void;
+  onChange?: (next: { category: string | null; windowDays: number; sort: PaperFiltersProps["active"]["sort"]; limit: number }) => void;
 }
 
 export function PaperFilters({ active, onChange }: PaperFiltersProps) {
   const [params] = useSearchParams();
   const currentCategory = active.category;
   const currentWindow = active.windowDays;
-  const currentQ = active.q ?? "";
   const currentSort = active.sort;
   const currentLimit = active.limit;
-  // FIX-BB-A — controlled search input. The previous defaultValue={currentQ} only set the
-  // initial DOM value, leaving React Router's URL change (e.g. after "清除" → "/papers")
-  // silently leaving the previous q in the field. Users see "I cleared, the URL says no q,
-  // the input still has the text" — the search *looks* broken even though the loader
-  // received null. Same shape as FIX-Z.4's "URL doesn't carry cursor, but the UI
-  // mirrors the loader's filtered state" lesson.
-  const [q, setQ] = useState(currentQ);
-  useEffect(() => { setQ(currentQ); }, [currentQ]);
 
   function withParams(overrides: Record<string, string | number | null>): string {
     const next = new URLSearchParams(params);
@@ -82,9 +74,9 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
       if (v === null || v === "") next.delete(k);
       else next.set(k, String(v));
     }
-    // FIX-Z.2 + FIX-AA-A: any BIND_KEY change drops the stale cursor (its b no longer matches
-    // the new query). The chip-click path uses BIND_KEYS={category, windowDays}; the search
-    // input contributes q; the sort + limit selects contribute their own keys. Same defense.
+    // FIX-Z.2: any BIND_KEY change drops the stale cursor (its b no longer matches
+    // the new query). The chip-click path uses BIND_KEYS={category, windowDays}; the
+    // sort + limit selects contribute their own keys. Same defense.
     if (Object.keys(overrides).some((k) => BIND_KEYS.has(k))) next.delete("cursor");
     return `?${next.toString()}`;
   }
@@ -101,7 +93,7 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
                 key={c.value ?? "all"}
                 to={to}
                 prefetch="intent"
-                onClick={() => onChange?.({ category: c.value, windowDays: currentWindow, q: currentQ, sort: currentSort, limit: currentLimit })}
+                onClick={() => onChange?.({ category: c.value, windowDays: currentWindow, sort: currentSort, limit: currentLimit })}
                 className={`rounded-full px-3 py-1 text-[12.5px] transition-colors ${
                   active ? "bg-ink text-bg" : "bg-bg-muted text-ink-3 hover:bg-bg-sunk"
                 }`}
@@ -122,7 +114,7 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
                 key={w.value}
                 to={to}
                 prefetch="intent"
-                onClick={() => onChange?.({ category: currentCategory, windowDays: w.value, q: currentQ, sort: currentSort, limit: currentLimit })}
+                onClick={() => onChange?.({ category: currentCategory, windowDays: w.value, sort: currentSort, limit: currentLimit })}
                 className={`rounded-full px-3 py-1 text-[12.5px] transition-colors ${
                   active ? "bg-ink text-bg" : "bg-bg-muted text-ink-3 hover:bg-bg-sunk"
                 }`}
@@ -134,52 +126,8 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
         </div>
       </div>
 
-      {/* FIX-AA-A — search row (借鉴 shelf.html "公榜海图" 表单式 Enter 提交).
-         GET /papers?q=...  — 提交后 React Router 重新执行 loader, items 重置到 page 1 of the
-         new query. Empty submit 走 /papers(无 q); input value 仍保留在 URL 之外,避免点击 X
-         按钮还残留空 q 的语义。*/}
-      <Form
-        action="/papers"
-        method="get"
-        className="flex flex-col gap-2 sm:flex-row sm:items-center"
-      >
-        {/* Preserve filter state across submits: the reader picks a chip then types a query,
-            the URL needs both. Hidden inputs mirror every BIND_KEY field that isn't the search
-            input itself. */}
-        {currentCategory && <input type="hidden" name="category" value={currentCategory} />}
-        <input type="hidden" name="windowDays" value={currentWindow} />
-        {currentSort !== "published_at" && <input type="hidden" name="sort" value={currentSort} />}
-        {currentLimit !== 24 && <input type="hidden" name="limit" value={currentLimit} />}
-        <input
-          type="search"
-          name="q"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索标题/作者/摘要关键词"
-          aria-label="搜索论文"
-          className="min-w-0 flex-1 rounded-md border border-line bg-bg px-3 py-1.5 text-[13px] text-ink placeholder:text-ink-4 focus:border-accent focus:outline-none"
-        />
-        <button
-          type="submit"
-          className="rounded-md bg-ink px-4 py-1.5 text-[13px] font-medium text-bg transition-colors hover:bg-ink-2"
-        >
-          搜索
-        </button>
-        {currentQ && (
-          <Link
-            to="/papers"
-            prefetch="intent"
-            onClick={() => onChange?.({ category: currentCategory, windowDays: currentWindow, q: null, sort: currentSort, limit: currentLimit })}
-            className="text-[12px] text-ink-4 hover:text-ink-3"
-          >
-            清除
-          </Link>
-        )}
-      </Form>
-
-      {/* FIX-AA-A — sort + limit row. <Link> on each so the URL stays shareable (the form-submit
-          alternative would lose the search query). Like the chips, these participate in
-          BIND_KEYS — flipping either one drops the cursor. */}
+      {/* FIX-AA-A — sort + limit row. <Link> on each so the URL stays shareable. Like the
+          chips, these participate in BIND_KEYS — flipping either one drops the cursor. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-ink-4">
         <div className="flex items-center gap-1.5">
           <span>排序</span>
@@ -191,7 +139,7 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
                 key={s.value}
                 to={to}
                 prefetch="intent"
-                onClick={() => onChange?.({ category: currentCategory, windowDays: currentWindow, q: currentQ, sort: s.value, limit: currentLimit })}
+                onClick={() => onChange?.({ category: currentCategory, windowDays: currentWindow, sort: s.value, limit: currentLimit })}
                 className={`rounded-full px-2.5 py-0.5 text-[12px] transition-colors ${
                   active ? "bg-ink/10 text-ink" : "text-ink-4 hover:text-ink-3"
                 }`}
@@ -211,7 +159,7 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
                 key={l.value}
                 to={to}
                 prefetch="intent"
-                onClick={() => onChange?.({ category: currentCategory, windowDays: currentWindow, q: currentQ, sort: currentSort, limit: l.value })}
+                onClick={() => onChange?.({ category: currentCategory, windowDays: currentWindow, sort: currentSort, limit: l.value })}
                 className={`rounded-full px-2.5 py-0.5 text-[12px] transition-colors ${
                   active ? "bg-ink/10 text-ink" : "text-ink-4 hover:text-ink-3"
                 }`}
