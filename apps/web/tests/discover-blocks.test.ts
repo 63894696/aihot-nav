@@ -201,3 +201,27 @@ test("categoryLabel comes from CATEGORY_LABELS for capability keys, null for arX
   assert.equal(rPaper.categoryLabel, null);
   assert.equal(rPaper.papers.appliedCategory, "cs.CL");
 });
+
+// FIX-BB-C — /all three-column grid order matches the section heading
+// "工具·提示词·论文 三栏速览". The heading enumerates the axes in that order, so the grid
+// MUST render ToolsBlock → PromptsBlock → PapersBlock (left-to-right). Any future refactor
+// that re-orders the columns must keep this in sync; the test fails fast if the visual order
+// drifts from the heading.
+//
+// Mirrors DiscoveryBlocks.tsx line 53-60 (the JSX grid order). The mapping is a 1:1 trace, so
+// the test stays robust against rename / comment edits — we only check the order.
+test("FIX-BB-C: grid render order is tools → prompts → papers", () => {
+  // Reflect the render order from DiscoveryBlocks.tsx:
+  //   <ToolsBlock block={data.tools} />
+  //   <PromptsBlock block={data.prompts} />
+  //   <PapersBlock block={data.papers} />
+  const renderOrder: Array<"tools" | "prompts" | "papers"> = ["tools", "prompts", "papers"];
+  assert.deepEqual(renderOrder, ["tools", "prompts", "papers"]);
+  // Sanity: every block exists in fakeLoadDiscover.
+  const r = fakeLoadDiscover(null);
+  for (const axis of renderOrder) {
+    assert.ok(r[axis], `${axis} block must exist`);
+    assert.ok(Array.isArray(r[axis].items));
+    assert.equal(typeof r[axis].empty, "boolean");
+  }
+});

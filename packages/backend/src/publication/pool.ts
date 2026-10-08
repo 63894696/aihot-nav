@@ -1,7 +1,9 @@
 // Public pool (/all) with numeric pages, and search in its two orderings.
 import type { PoolResponse, TimelineFilters } from "@aihot/contracts/site";
+import type { FeedItemSummary } from "@aihot/contracts/site";
 import { beijingDate, beijingMidnight } from "@aihot/contracts/time";
 import { one, sql, withCustomPlans, type Db } from "../db.ts";
+import { isCategoryKey } from "@aihot/contracts/taxonomy";
 import {
   categoryCondition, channelCondition, ITEM_COLUMNS, ITEM_FROM, listedCondition, tagCondition, toFeedItemSummary, topicCondition,
   type ItemRow,
@@ -65,6 +67,100 @@ export function searchTerms(q: string): string[] {
 export function directMatchCondition(terms: string[]) {
   if (terms.length === 0) return sql``;
   return terms.reduce((acc, t) => sql`${acc} AND p.search_text LIKE ${"%" + t + "%"}`, sql``);
+}
+
+/**
+ * FIX-BB-B — papers / prompts come from their own tables, NOT publications. They are
+ * indexed into cross-axis candidates so /all?q=foo returns hits across tools, papers and
+ * prompts. The SQL is a 2-arm query (papers + prompt_items) loaded separately and stitched
+ * to the publications rows already produced by the run() function.
+ *
+ * Schema truth (verified against migrations 0039_papers.sql + 0042_prompts.sql):
+ *   - papers: arxiv_id PK, title_en + title_zh, abstract_en + abstract_zh, primary_category,
+ *     published_at, status. Translated title is "arXiv 论文" → site detail at /papers/:arxiv_id.
+ *   - prompt_items: id bigserial PK, use_case, prompt_text, category, captured_at, article_id FK.
+ *     The source URL is on `articles` (joined via article_id). Site detail at /prompts/:article_id.
+ *
+ * Why not asyncpool.combine into a single SQL UNION: the publications side hits pool_search
+ * (GIN-trgm index + body fallback), while papers / prompt_items have no such index. A single
+ * UNION across all three would force the planner to skip the GIN path. Keeping the queries
+ * separate preserves the fast path for the 80% case.
+ *
+ * Why 2 * POOL_PAGE_SIZE cap: each cross-axis row replaces a tool row; the loader truncates
+ * to POOL_PAGE_SIZE once it merges the three sources by time.
+ */
+async function loadCrossAxisCandidates(terms: string[], cap: number, db: Db): Promise<Array<{ crossAxis: "paper" | "prompt"; id: string; title: string; summary: string | null; published_at: Date | null; category: string | null; url: string | null }>> {
+  if (terms.length === 0) return [];
+  const likePatterns = terms.map((t) => `%${t}%`);
+  try {
+    const rows = await db<Array<{ crossAxis: "paper" | "prompt"; id: string; title: string; summary: string | null; published_at: Date | null; category: string | null; url: string | null }>>`
+      SELECT * FROM (
+        SELECT 'paper'::text AS "crossAxis",
+               papers.arxiv_id::text AS id,
+               coalesce(papers.title_zh, papers.title_en)::text AS title,
+               coalesce(papers.abstract_zh, papers.abstract_en)::text AS summary,
+               papers.published_at,
+               papers.primary_category AS category,
+               papers.abs_url AS url
+          FROM papers
+         WHERE papers.status IN ('fetched','translated','partial')
+           AND (papers.title_en     ILIKE ANY(${likePatterns}::text[])
+             OR papers.title_zh       ILIKE ANY(${likePatterns}::text[])
+             OR papers.abstract_en    ILIKE ANY(${likePatterns}::text[])
+             OR papers.abstract_zh    ILIKE ANY(${likePatterns}::text[]))
+        UNION ALL
+        SELECT 'prompt'::text AS "crossAxis",
+               pi.article_id::text AS id,
+               coalesce(pi.use_case, substring(pi.prompt_text, 1, 80))::text AS title,
+               pi.prompt_text::text AS summary,
+               pi.captured_at AS published_at,
+               pi.category::text AS category,
+               a.url AS url
+          FROM prompt_items pi
+          JOIN articles a ON a.id = pi.article_id
+         WHERE (pi.use_case     ILIKE ANY(${likePatterns}::text[])
+             OR pi.prompt_text   ILIKE ANY(${likePatterns}::text[]))
+      ) cross
+     ORDER BY cross.published_at DESC NULLS LAST
+     LIMIT ${cap}`;
+    return rows;
+  } catch {
+    // FIX-AA.4 lesson — defensive: any SQL throw on the cross-axis segment must NOT 500 the
+    // whole /all page. Empty array means the user still sees the publications side.
+    return [];
+  }
+}
+
+/**
+ * Project a cross-axis candidate into the FeedItemSummary shape DayList already renders.
+ * We don't reuse toFeedItemSummary because papers / prompt_items rows lack the columns the
+ * publication-side projection reads (channel, selected, score, x_post, searchMeta, story).
+ * DayList reads crossAxis + id + title + summary + publishedAt; the rest falls back to
+ * sensible empty defaults that mirror the original "empty pool row" guard.
+ *
+ * Exported for tests (apps/web/tests/pool-cross-axis.test.ts) so the projection is locked at
+ * the contract level. The DB-free test pins the wire shape; the integration smoke against a
+ * running API confirms the union actually returns hits.
+ */
+export function toCrossAxisFeedItem(c: { crossAxis: "paper" | "prompt"; id: string; title: string; summary: string | null; published_at: Date | null; category: string | null; url: string | null }): FeedItemSummary {
+  const publishedAt = c.published_at ? c.published_at.toISOString() : null;
+  return {
+    id: c.id,
+    title: c.title,
+    summary: c.summary,
+    reason: null,
+    publishedAt,
+    timelineAt: publishedAt ?? new Date(0).toISOString(),
+    category: c.category && isCategoryKey(c.category) ? c.category : null,
+    tags: [],
+    score: null,
+    selected: false,
+    channel: "news",
+    searchMeta: null,
+    source: { name: c.crossAxis === "paper" ? "arXiv 论文" : "提示词", searchProvider: null },
+    x: null,
+    crossAxis: c.crossAxis,
+  };
 }
 
 /**
@@ -134,8 +230,12 @@ export async function loadPool(query: PoolQuery): Promise<PoolResponse> {
           ORDER BY p.timeline_at DESC, p.article_id DESC LIMIT ${POOL_PAGE_SIZE} OFFSET ${offset})
         SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE p.article_id IN (SELECT article_id FROM page)
         ORDER BY p.timeline_at DESC, p.article_id DESC`;
-      return { rows, total: await poolCount(filterKey, () => db<{ n: number }[]>`
-        SELECT count(*) AS n FROM (SELECT 1 FROM publications p WHERE ${listedCondition(now)} AND p.eligible ${filters} LIMIT ${cap}) t`) };
+      return {
+        rows,
+        total: await poolCount(filterKey, () => db<{ n: number }[]>`
+        SELECT count(*) AS n FROM (SELECT 1 FROM publications p WHERE ${listedCondition(now)} AND p.eligible ${filters} LIMIT ${cap}) t`),
+        crossRows: [] as Array<Awaited<ReturnType<typeof loadCrossAxisCandidates>>[number]>,
+      };
     }
     if (tab === "relevance") {
       // Rank narrow rows first: no article bodies or translations enter the sort/count. The public
@@ -171,7 +271,11 @@ export async function loadPool(query: PoolQuery): Promise<PoolResponse> {
           SELECT ${ITEM_COLUMNS}, page.rel ${ITEM_FROM} JOIN page ON page.article_id = p.article_id
         ) hydrated ON true ORDER BY hydrated.rel DESC, hydrated.timeline_at DESC, hydrated.id DESC`;
       const rows = result.filter((r): r is ItemRow & { rel: number; total: number } => r.id !== null);
-      return { rows, total: Number(result[0]!.total) };
+      // FIX-BB-B — relevance tab still surfaces papers / prompt_items under the same q. We cap
+      // at 2 * POOL_PAGE_SIZE so a papers-rich query doesn't get dominated by tools at the
+      // top, then truncate to POOL_PAGE_SIZE in the merge below.
+      const crossRows = await loadCrossAxisCandidates(terms, 2 * POOL_PAGE_SIZE, db);
+      return { rows, total: Number(result[0]!.total), crossRows };
     }
     // Default search: newest first straight from the timeline index; the total from the pool's
     // search rows, where one- and two-character terms scan a small table instead of every item.
@@ -185,22 +289,43 @@ export async function loadPool(query: PoolQuery): Promise<PoolResponse> {
     const { n } = one(await db<{ n: number }[]>`
       SELECT count(*) AS n FROM (SELECT 1 FROM pool_search ps JOIN publications p ON p.article_id = ps.article_id
         WHERE ${listedCondition(now)} AND p.eligible ${filters} ${direct} LIMIT ${cap}) t`);
-    return { rows, total: Number(n) };
+    // FIX-BB-B — see relevance branch; cross-axis rows ride on the same timelineAt DESC key.
+    const crossRows = await loadCrossAxisCandidates(terms, 2 * POOL_PAGE_SIZE, db);
+    return { rows, total: Number(n), crossRows };
   };
 
-  const { rows, total } = q ? await withSearchCapacity(run) : await run(sql);
+  const { rows, total, crossRows } = q ? await withSearchCapacity(run) : await run(sql);
   const today = beijingDate(now);
   const meta = one(await sql<{ today_count: number; updated_at: Date | null }[]>`
     SELECT (SELECT count(*) FROM publications p
       WHERE ${listedCondition(now)} AND p.eligible AND p.timeline_at >= ${beijingMidnight(today)} ${filters}) AS today_count,
       (SELECT max(p.updated_at) FROM publications p WHERE p.eligible) AS updated_at`);
 
+  // FIX-BB-B — when q is present, splice cross-axis candidates into the publication rows.
+  //   - Empty q: keep the legacy path untouched (crossRows === []).
+  //   - Merge key: timelineAt DESC (both sides share ISO strings after the projection above).
+  //   - Truncate to POOL_PAGE_SIZE — preserves the existing page navigator without changes.
+  //   - total = publications + cross-axis candidates; the UI already caps at 2000+.
+  const pubItems = rows.map(toFeedItemSummary);
+  let items: FeedItemSummary[];
+  let mergedTotal: number;
+  if (q && crossRows.length > 0) {
+    const crossItems = crossRows.map(toCrossAxisFeedItem);
+    const merged = [...pubItems, ...crossItems];
+    merged.sort((a, b) => (b.timelineAt > a.timelineAt ? 1 : b.timelineAt < a.timelineAt ? -1 : b.id > a.id ? -1 : b.id < a.id ? 1 : 0));
+    items = merged.slice(0, POOL_PAGE_SIZE);
+    mergedTotal = total + crossRows.length;
+  } else {
+    items = pubItems;
+    mergedTotal = total;
+  }
+
   return {
     filters: { channel: query.channel, category: query.category, tag: query.tag, topic: query.topic ?? null, q, tab },
-    items: rows.map(toFeedItemSummary),
+    items,
     page,
-    pageCount: Math.min(POOL_MAX_PAGES, Math.max(1, Math.ceil(total / POOL_PAGE_SIZE))),
-    total,
+    pageCount: Math.min(POOL_MAX_PAGES, Math.max(1, Math.ceil(mergedTotal / POOL_PAGE_SIZE))),
+    total: mergedTotal,
     todayCount: Number(meta.today_count),
     freshness: (meta.updated_at ?? now).toISOString(),
     generatedAt: now.toISOString(),

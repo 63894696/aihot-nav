@@ -50,10 +50,13 @@ export function DiscoveryBlocks({ data }: Props) {
         <span className="text-[11.5px] text-ink-4">每栏 {data.tools.items.length || data.papers.items.length || data.prompts.items.length} / 6 · 直达分类页</span>
       </div>
 
+      {/* FIX-BB-C — three-column order matches the section heading "工具·提示词·论文 三栏速览":
+          tools → prompts → papers (previously tools → papers → prompts). Same fixed-column grid;
+          only the visual left-to-right order swaps. Header label unchanged. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
         <ToolsBlock block={data.tools} />
-        <PapersBlock block={data.papers} />
         <PromptsBlock block={data.prompts} />
+        <PapersBlock block={data.papers} />
       </div>
 
       {/* FIX-AA.4 — 三角联动 trial entry. Each card is a (paper, tool, prompt) triple that shares an

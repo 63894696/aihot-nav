@@ -28,7 +28,16 @@ export interface FeedItemProps {
 }
 
 export const FeedItem = memo(function FeedItem({ item, group, filters, read = false, onOpen, showTags = false, linkPrefix }: FeedItemProps) {
-  const detailHref = `${(linkPrefix ?? "/items") as "/items" | "/tools"}/${item.id}` as const;
+  // FIX-BB-B — cross-axis routing. Items minted by loadPool's UNION segment carry
+  // crossAxis === "paper" | "prompt" and link to their own detail pages; "tool" or undefined
+  // fall through to the legacy linkPrefix (default /items). The legacy path is preserved
+  // verbatim so existing publications, tools-page, and topic-page cards keep working.
+  const crossAxis = item.crossAxis;
+  const crossAxisHref: `/papers/${string}` | `/prompts/${string}` | null =
+    crossAxis === "paper" ? `/papers/${item.id}` :
+    crossAxis === "prompt" ? `/prompts/${item.id}` :
+    null;
+  const detailHref = (crossAxisHref ?? `${(linkPrefix ?? "/items") as "/items" | "/tools"}/${item.id}`) as `/items/${string}` | `/tools/${string}` | `/papers/${string}` | `/prompts/${string}`;
   const isX = item.channel === "x" && !!item.x;
   const open = () => onOpen?.(item.id);
   const showSources = !!group && (group.additionalSourceCount > 0 || (group.developmentCount <= 1 && group.reportCount > 1));

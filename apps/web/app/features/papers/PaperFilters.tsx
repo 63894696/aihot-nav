@@ -4,6 +4,7 @@
 // 每页切换, 不即时搜索). Search hits every change-relevant key in BIND_KEYS so changing q/sort/
 // limit drops any stale cursor (FIX-Z.2/3 defense in depth applies unchanged).
 import { Form, Link, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
 
 const CATEGORIES = [
   { value: null, label: "全部" },
@@ -66,6 +67,14 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
   const currentQ = active.q ?? "";
   const currentSort = active.sort;
   const currentLimit = active.limit;
+  // FIX-BB-A — controlled search input. The previous defaultValue={currentQ} only set the
+  // initial DOM value, leaving React Router's URL change (e.g. after "清除" → "/papers")
+  // silently leaving the previous q in the field. Users see "I cleared, the URL says no q,
+  // the input still has the text" — the search *looks* broken even though the loader
+  // received null. Same shape as FIX-Z.4's "URL doesn't carry cursor, but the UI
+  // mirrors the loader's filtered state" lesson.
+  const [q, setQ] = useState(currentQ);
+  useEffect(() => { setQ(currentQ); }, [currentQ]);
 
   function withParams(overrides: Record<string, string | number | null>): string {
     const next = new URLSearchParams(params);
@@ -144,7 +153,8 @@ export function PaperFilters({ active, onChange }: PaperFiltersProps) {
         <input
           type="search"
           name="q"
-          defaultValue={currentQ}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="搜索标题/作者/摘要关键词"
           aria-label="搜索论文"
           className="min-w-0 flex-1 rounded-md border border-line bg-bg px-3 py-1.5 text-[13px] text-ink placeholder:text-ink-4 focus:border-accent focus:outline-none"

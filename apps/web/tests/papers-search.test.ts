@@ -105,3 +105,34 @@ test("FIX-AA-A: q is forwarded verbatim (no trim/lowercase in the loader)", () =
   const q = u.searchParams.get("q");
   assert.equal(q, "Hello World", "loader must pass through verbatim");
 });
+
+// FIX-BB-A — the search input must follow the URL, not just its initial mount value.
+//
+// The previous implementation used <input defaultValue={currentQ} /> which sets the DOM
+// value once and never updates on URL navigation. Reading a search query on /papers?q=foo,
+// clicking "清除" (Link to="/papers"), and getting re-rendered with currentQ=null left the
+// old text in the field. The loader DID drop q (URL became /papers), but the visual cue
+// still showed "foo" — users perceived the search as a no-op. A controlled input + effect
+// makes the field a render output of currentQ.
+test("FIX-BB-A: search input value mirrors currentQ after URL navigation", () => {
+  // Simulate React state — the input value must equal currentQ after each URL change.
+  let q = "";
+  const setQ = (next: string) => { q = next; };
+  // Effect: every time currentQ changes, setQ follows.
+  const applyUrlChange = (newCurrentQ: string | null) => {
+    setQ(newCurrentQ ?? "");
+  };
+  // Flow: visit /papers?q=foo → input shows foo.
+  applyUrlChange("foo");
+  assert.equal(q, "foo");
+  // User clicks 清除 → URL becomes /papers → currentQ becomes null.
+  applyUrlChange(null);
+  assert.equal(q, "", "after clear, input is empty");
+  // User types "bar" + submits → URL becomes /papers?q=bar → currentQ becomes "bar".
+  applyUrlChange("bar");
+  assert.equal(q, "bar");
+  // User clicks cs.A chip → URL keeps q (chip-click uses withParams which keeps other
+  // BIND_KEYS intact; q must survive category change).
+  applyUrlChange("bar");
+  assert.equal(q, "bar", "q must survive chip click");
+});

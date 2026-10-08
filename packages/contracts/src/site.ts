@@ -84,6 +84,13 @@ export interface FeedItemSummary extends Pick<ItemSummary, "id" | "title" | "sum
   x: (Pick<XPostView, "authorName" | "handle" | "avatarUrl" | "avatarSrcSet" | "media"> & {
     quoted: Omit<NonNullable<XPostView["quoted"]>, "url"> | null;
   }) | null;
+  /**
+   * FIX-BB-B — cross-axis tag. Tool items get "tool" (default if undefined); paper and
+   * prompt candidates returned by loadPool's UNION segment get the matching axis. Frontend
+   * DayList routes the row to /papers/:id or /prompts/:id when the tag is "paper"/"prompt".
+   * The default "tool" is omitted from the JSON to keep the existing card shape intact.
+   */
+  crossAxis?: "tool" | "paper" | "prompt";
 }
 
 export interface GroupInfo {
