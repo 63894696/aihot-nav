@@ -19,7 +19,15 @@ interface TopicPageData {
   pageCount: number;
 }
 
+// Company-group topics were removed (2026-10-09, FIX-W2): 15 vendor / model slugs now redirect to the
+// index page so old links and crawlers don't 404.
+const RETIRED_COMPANY_SLUGS = new Set([
+  "openai", "anthropic", "google", "deepseek", "qwen", "kimi", "minimax", "zhipu",
+  "xai", "meta", "microsoft", "nvidia", "hugging-face", "cursor", "openrouter",
+]);
+
 export async function loader({ params, request }: Route.LoaderArgs) {
+  if (RETIRED_COMPANY_SLUGS.has(params.slug)) throw redirect("/topics", 301);
   const page = params.page ? Number(params.page) : 1;
   if (params.page !== undefined && (!/^\d+$/.test(params.page) || page < 1)) throw new Response("Not found", { status: 404 });
   // Page 1 lives at the topic's own address (308).

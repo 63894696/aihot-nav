@@ -2,11 +2,6 @@
   "exportedAt": "2026-09-26",
   "groups": [
     {
-      "key": "company",
-      "name": "公司与模型",
-      "blurb": "按厂商与模型系追踪：谁发了什么、又赢了哪一局"
-    },
-    {
       "key": "field",
       "name": "技术方向",
       "blurb": "按技术领域深挖：Agent、多模态、具身智能……"
@@ -18,240 +13,6 @@
     }
   ],
   "topics": [
-    {
-      "slug": "openai",
-      "name": "OpenAI / ChatGPT",
-      "group": "company",
-      "entityId": "openai",
-      "tags": [
-        "OpenAI",
-        "entity:openai"
-      ],
-      "definition": "OpenAI 的全部动态：GPT 系列模型、ChatGPT 与 Sora 产品、公司战略与人事的持续追踪。",
-      "related": [
-        "anthropic",
-        "google",
-        "model-releases"
-      ]
-    },
-    {
-      "slug": "anthropic",
-      "name": "Anthropic / Claude",
-      "group": "company",
-      "entityId": "anthropic",
-      "tags": [
-        "Anthropic",
-        "entity:anthropic"
-      ],
-      "definition": "Anthropic 的全部动态：Claude 系列模型、Claude Code、安全研究路线与公司进展的持续追踪。",
-      "related": [
-        "openai",
-        "google",
-        "safety"
-      ]
-    },
-    {
-      "slug": "google",
-      "name": "Google / Gemini",
-      "group": "company",
-      "entityId": "google",
-      "tags": [
-        "Google",
-        "DeepMind",
-        "entity:google"
-      ],
-      "definition": "Google 与 DeepMind 的 AI 动态：Gemini 系列、Veo 视频模型、研究成果与产品生态的持续追踪。",
-      "related": [
-        "openai",
-        "anthropic",
-        "multimodal"
-      ]
-    },
-    {
-      "slug": "deepseek",
-      "name": "DeepSeek",
-      "group": "company",
-      "entityId": "deepseek",
-      "tags": [
-        "DeepSeek",
-        "entity:deepseek"
-      ],
-      "definition": "DeepSeek（深度求索）的模型发布、开源权重与技术报告——开源大模型价格与性能双卷的风向标。",
-      "related": [
-        "qwen",
-        "open-source",
-        "model-releases"
-      ]
-    },
-    {
-      "slug": "qwen",
-      "name": "千问 Qwen",
-      "group": "company",
-      "entityId": "qwen",
-      "tags": [
-        "entity:qwen"
-      ],
-      "definition": "阿里千问 Qwen 系列的开源发布与迭代：从旗舰模型到端侧小模型的全谱系动态。",
-      "related": [
-        "deepseek",
-        "kimi",
-        "open-source"
-      ]
-    },
-    {
-      "slug": "kimi",
-      "name": "Kimi / 月之暗面",
-      "group": "company",
-      "entityId": "kimi",
-      "tags": [
-        "entity:kimi"
-      ],
-      "definition": "月之暗面 Kimi 系列模型与产品动态：K 系列开源模型、长上下文技术与产品演进的追踪。",
-      "related": [
-        "qwen",
-        "deepseek",
-        "minimax"
-      ]
-    },
-    {
-      "slug": "minimax",
-      "name": "MiniMax",
-      "group": "company",
-      "entityId": "minimax",
-      "tags": [
-        "entity:minimax"
-      ],
-      "definition": "MiniMax 的模型与产品动态：M 系列大模型、语音与多模态能力、开源与商业化进展。",
-      "related": [
-        "kimi",
-        "qwen",
-        "voice"
-      ]
-    },
-    {
-      "slug": "zhipu",
-      "name": "智谱 GLM",
-      "group": "company",
-      "entityId": "zhipu",
-      "tags": [
-        "entity:zhipu"
-      ],
-      "definition": "智谱的 GLM 系列模型动态：旗舰开源发布、代码与推理能力迭代、商业化与生态进展的追踪。",
-      "related": [
-        "qwen",
-        "kimi",
-        "open-source"
-      ]
-    },
-    {
-      "slug": "xai",
-      "name": "xAI / Grok",
-      "group": "company",
-      "entityId": "xai",
-      "tags": [
-        "xAI",
-        "entity:xai"
-      ],
-      "definition": "马斯克 xAI 与 Grok 系列的全部动态：模型迭代、算力扩张与 X 平台整合的持续追踪。",
-      "related": [
-        "openai",
-        "meta",
-        "industry"
-      ]
-    },
-    {
-      "slug": "meta",
-      "name": "Meta / Llama",
-      "group": "company",
-      "entityId": "meta",
-      "tags": [
-        "Meta",
-        "entity:meta"
-      ],
-      "definition": "Meta 的 AI 动态：Llama 开源模型系列、超级智能实验室与元宇宙之外的 AI 豪赌。",
-      "related": [
-        "xai",
-        "open-source",
-        "industry"
-      ]
-    },
-    {
-      "slug": "microsoft",
-      "name": "Microsoft / Copilot",
-      "group": "company",
-      "entityId": "microsoft",
-      "tags": [
-        "Microsoft",
-        "entity:microsoft"
-      ],
-      "definition": "微软的 AI 布局：Copilot 全家桶、Azure AI 基础设施与 OpenAI 合作关系的持续追踪。",
-      "related": [
-        "openai",
-        "coding",
-        "product-updates"
-      ]
-    },
-    {
-      "slug": "nvidia",
-      "name": "NVIDIA 英伟达",
-      "group": "company",
-      "entityId": "nvidia",
-      "tags": [
-        "entity:nvidia"
-      ],
-      "definition": "英伟达的 AI 芯片与生态动态：GPU 新品、CUDA 生态、机器人平台与 AI 算力市场的风向。",
-      "related": [
-        "engineering",
-        "industry",
-        "embodied"
-      ]
-    },
-    {
-      "slug": "hugging-face",
-      "name": "Hugging Face",
-      "group": "company",
-      "entityId": "hugging-face",
-      "tags": [
-        "Hugging Face",
-        "entity:hugging-face"
-      ],
-      "definition": "Hugging Face 开源社区动态：热门模型与数据集、排行榜变化与开源生态的晴雨表。",
-      "related": [
-        "open-source",
-        "model-releases",
-        "data-training"
-      ]
-    },
-    {
-      "slug": "cursor",
-      "name": "Cursor",
-      "group": "company",
-      "entityId": "cursor",
-      "tags": [
-        "entity:cursor"
-      ],
-      "definition": "Cursor 编辑器的产品迭代与生态动态——AI 编码工具竞争中最受关注的玩家之一。",
-      "related": [
-        "coding",
-        "agent",
-        "product-updates"
-      ]
-    },
-    {
-      "slug": "openrouter",
-      "name": "OpenRouter",
-      "group": "company",
-      "entityId": "openrouter",
-      "tags": [
-        "entity:openrouter"
-      ],
-      "definition": "OpenRouter 模型路由平台动态：新模型上架、用量排行与开发者选型的真实市场信号。",
-      "related": [
-        "engineering",
-        "model-releases",
-        "open-source"
-      ]
-    },
     {
       "slug": "agent",
       "name": "Agent 智能体",
@@ -276,7 +37,6 @@
       "definition": "AI 写代码的一切：编码助手、Vibe Coding、代码模型评测与开发工作流变革。",
       "related": [
         "agent",
-        "cursor",
         "tutorials"
       ]
     },
@@ -359,7 +119,6 @@
       ],
       "definition": "AI 走进物理世界：人形机器人、具身基础模型与真实环境操作能力的进展追踪。",
       "related": [
-        "nvidia",
         "multimodal",
         "papers"
       ]
@@ -389,7 +148,6 @@
       "definition": "开源模型、框架与仓库动态：权重开放、社区项目爆火、开源与闭源的力量消长。",
       "related": [
         "model-releases",
-        "hugging-face",
         "coding"
       ]
     },
